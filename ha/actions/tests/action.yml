@@ -4,7 +4,9 @@ description: >-
   of the same name in place of their pins - under Home Assistant's package constraints, and Home
   Assistant's version of each package the integration requires that its own integrations pin,
   then runs pyright strict, the tests with full coverage, the repository's contract and the
-  template check. The repository must already be checked out.
+  template check. Where hacs.json supports a Home Assistant older than the one pinned, it then
+  installs the same for that Home Assistant and runs pyright, the tests and the contract with it
+  too. The repository must already be checked out.
 
 inputs:
   branch:
@@ -24,11 +26,25 @@ inputs:
 runs:
   using: composite
   steps:
-    # The Python the pinned Home Assistant release requires.
+    # Each Home Assistant tested runs on the oldest Python it requires, which moves with its
+    # releases.
+    - name: Find the Python each Home Assistant tested requires
+      id: python
+      shell: bash
+      run: python3 "$GITHUB_ACTION_PATH/../../tools/pythons.py" . | tee -a "$GITHUB_OUTPUT"
+
+    - name: Set up the Python of the oldest Home Assistant supported
+      id: minimum-python
+      if: steps.python.outputs.minimum != ''
+      uses: actions/setup-python@v7
+      with:
+        python-version: ${{ steps.python.outputs.minimum }}
+
+    # Set up last, so that it is the Python every step runs.
     - name: Set up Python
       uses: actions/setup-python@v7
       with:
-        python-version: "3.14"
+        python-version: ${{ steps.python.outputs.newest }}
 
     - name: Install the test tools, Home Assistant and the libraries
       shell: bash
@@ -36,32 +52,9 @@ runs:
         BRANCH: ${{ inputs.branch }}
         OWNER: ${{ github.repository_owner }}
       run: |
-        common="$GITHUB_ACTION_PATH/../../../common/tools"
         python -m pip install packaging==26.3
-        requirements="$RUNNER_TEMP/requirements.txt"
-        cp requirements-test.txt "$requirements"
-        if [[ -n "$BRANCH" && "$BRANCH" != "main" ]]; then
-          python "$common/libraries.py" branch . "$OWNER" "$BRANCH" > "$RUNNER_TEMP/libraries"
-          mapfile -t libraries < "$RUNNER_TEMP/libraries"
-          if (( ${#libraries[@]} )); then
-            printf 'Library from branch %s: %s\n' "$BRANCH" "${libraries[@]}"
-            python "$common/libraries.py" requirements "$requirements" "${libraries[@]}"
-          fi
-        fi
-        python -m pip install -r "$requirements"
-        # Home Assistant installs an integration's requirements under its package constraints, so
-        # the tests do too: a package outside them, such as cffi, is replaced at Home Assistant's
-        # version as Home Assistant would have it.
-        constraints=$(python -c 'import homeassistant, pathlib; print(pathlib.Path(homeassistant.__file__).parent / "package_constraints.txt")')
-        python -m pip install -r "$requirements" -c "$constraints"
-        # A package Home Assistant's own integrations pin is at their version wherever one of them
-        # is set up; it follows the Home Assistant pinned rather than a line kept by hand.
-        python "$GITHUB_ACTION_PATH/../../tools/contract.py" pins . > "$RUNNER_TEMP/pins"
-        mapfile -t pins < "$RUNNER_TEMP/pins"
-        if (( ${#pins[@]} )); then
-          printf "Home Assistant's version: %s\n" "${pins[@]}"
-          python -m pip install "${pins[@]}" -c "$constraints"
-        fi
+        cp requirements-test.txt "$RUNNER_TEMP/requirements.txt"
+        "$GITHUB_ACTION_PATH/install.sh" python "$RUNNER_TEMP/requirements.txt" "$BRANCH" "$OWNER"
 
     - name: Type check (pyright strict)
       shell: bash
@@ -81,6 +74,53 @@ runs:
     - name: Check the repository's contract
       shell: bash
       run: python "$GITHUB_ACTION_PATH/../../tools/contract.py" .
+
+    # hacs.json promises the oldest Home Assistant it names as much as the newest: the tests run
+    # on both, so that nothing newer than the oldest is used without raising it.
+    - name: Find the oldest Home Assistant supported
+      id: minimum
+      shell: bash
+      run: |
+        version=$(python "$GITHUB_ACTION_PATH/../../tools/contract.py" minimum .)
+        echo "Oldest Home Assistant supported, older than the one pinned: ${version:-none}"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - name: Install the test tools and the libraries for the oldest Home Assistant supported
+      if: steps.minimum.outputs.version != ''
+      shell: bash
+      env:
+        BRANCH: ${{ inputs.branch }}
+        OWNER: ${{ github.repository_owner }}
+        HOME_ASSISTANT: ${{ steps.minimum.outputs.version }}
+        PYTHON: ${{ steps.minimum-python.outputs.python-path }}
+      run: |
+        "$PYTHON" -m venv "$RUNNER_TEMP/minimum"
+        oldest="$RUNNER_TEMP/minimum/bin/python"
+        # pip finds the release of the test harness made for that Home Assistant.
+        "$oldest" -m pip install packaging==26.3 "homeassistant==$HOME_ASSISTANT" pytest-homeassistant-custom-component
+        "$oldest" "$GITHUB_ACTION_PATH/../../tools/contract.py" minimum-requirements . \
+          > "$RUNNER_TEMP/minimum-requirements.txt"
+        "$GITHUB_ACTION_PATH/install.sh" "$oldest" "$RUNNER_TEMP/minimum-requirements.txt" "$BRANCH" "$OWNER"
+
+    - name: Type check (pyright strict) on the oldest Home Assistant supported
+      if: steps.minimum.outputs.version != ''
+      shell: bash
+      run: '"$RUNNER_TEMP/minimum/bin/pyright" --pythonpath "$RUNNER_TEMP/minimum/bin/python"'
+
+    - name: Test on the oldest Home Assistant supported
+      if: steps.minimum.outputs.version != ''
+      shell: bash
+      run: |
+        tools="$GITHUB_ACTION_PATH/../../tools"
+        domain=$(python "$tools/repository.py" domain .)
+        coverage=$(python "$GITHUB_ACTION_PATH/../../../common/tools/settings.py" coverage .)
+        "$RUNNER_TEMP/minimum/bin/python" -m pytest -m "not live" -q -o log_cli=false \
+          --cov="custom_components.$domain" --cov-report=term-missing --cov-fail-under="$coverage"
+
+    - name: Check the oldest Home Assistant supported against the contract
+      if: steps.minimum.outputs.version != ''
+      shell: bash
+      run: '"$RUNNER_TEMP/minimum/bin/python" "$GITHUB_ACTION_PATH/../../tools/contract.py" minimum-check .'
 
     - name: Check that the shared files agree with the template
       if: inputs.template-check == 'true'

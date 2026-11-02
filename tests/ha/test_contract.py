@@ -15,6 +15,7 @@ from contract import (
     check,
     check_hacs,
     check_manifest,
+    check_minimum,
     check_quality_scale,
     check_requirements,
     check_test_pins,
@@ -22,6 +23,9 @@ from contract import (
     HomeAssistant,
     home_assistant,
     home_assistant_pins,
+    minimum,
+    minimum_test_pins,
+    refused,
     requirement_closure,
     released,
 )
@@ -48,12 +52,91 @@ def test_hacs_installs_the_domains_zip_on_the_home_assistant_tested() -> None:
 
 
 def test_every_way_hacs_json_can_be_wrong_is_reported() -> None:
-    hacs = {"filename": "other.zip", "homeassistant": "2026.3.0"}
+    hacs = {"filename": "other.zip", "homeassistant": "2026.11.0"}
     assert list(check_hacs(hacs, "demo", "2026.10.4")) == [
         "hacs.json must set zip_release to true",
         "hacs.json names the zip 'other.zip'; it must be 'demo.zip'",
-        "hacs.json requires Home Assistant '2026.3.0', but the tests run '2026.10.4'",
+        "hacs.json requires Home Assistant '2026.11.0', newer than the '2026.10.4' the tests run",
     ]
+
+
+def test_hacs_json_may_require_a_home_assistant_older_than_the_one_tested() -> None:
+    hacs = {"zip_release": True, "filename": "demo.zip", "homeassistant": "2026.10.2"}
+    assert list(check_hacs(hacs, "demo", "2026.11.1")) == []
+
+
+@pytest.mark.parametrize("required", [None, "", "latest", 2026])
+def test_hacs_json_must_name_the_oldest_home_assistant_supported(required: object) -> None:
+    hacs = {"zip_release": True, "filename": "demo.zip", "homeassistant": required}
+    assert list(check_hacs(hacs, "demo", "2026.10.4")) == [
+        "hacs.json must give the oldest Home Assistant the integration supports in homeassistant, "
+        "such as '2026.10.4'"
+    ]
+
+
+def test_without_home_assistant_installed_no_requirement_holds() -> None:
+    hacs = {"zip_release": True, "filename": "demo.zip", "homeassistant": "2026.10.4"}
+    assert list(check_hacs(hacs, "demo", None)) == [
+        "hacs.json requires Home Assistant '2026.10.4', newer than the None the tests run"
+    ]
+
+
+def test_the_oldest_home_assistant_supported_is_tested_only_when_older() -> None:
+    assert minimum({"homeassistant": "2026.10.2"}, "2026.11.1") == "2026.10.2"
+    assert minimum({"homeassistant": "2026.11.1"}, "2026.11.1") is None
+    assert minimum({"homeassistant": "2026.12.0"}, "2026.11.1") is None
+    assert minimum({"homeassistant": "latest"}, "2026.11.1") is None
+    assert minimum({"homeassistant": "2026.10.2"}, None) is None
+
+
+def test_the_oldest_home_assistant_runs_its_own_harness_and_its_own_integrations_pins() -> None:
+    pinned = [
+        "# The harness pins the Home Assistant release the tests run.",
+        "pytest-homeassistant-custom-component==0.13.380",
+        "pyright==1.1.414  # the type check",
+        "",
+        "device-lib==1.2.0",
+        "qrcode==8.3",
+        "aiohttp==3.14.0",
+        "other-lib @ https://github.com/Owner/other-lib/archive/feature.tar.gz",
+        "-c constraints.txt",
+    ]
+    core = HomeAssistant(dependencies=frozenset({"aiohttp"}), pins={"qrcode": frozenset({"8.1", "8.2"})})
+    assert minimum_test_pins(pinned, core, "0.13.373") == [
+        "pytest-homeassistant-custom-component==0.13.373",
+        "pyright==1.1.414",
+        "device-lib==1.2.0",
+        "qrcode==8.2",
+        "other-lib @ https://github.com/Owner/other-lib/archive/feature.tar.gz",
+        "-c constraints.txt",
+    ]
+
+
+def test_without_a_harness_installed_its_pin_is_kept() -> None:
+    pinned = ["pytest-homeassistant-custom-component==0.13.380"]
+    assert minimum_test_pins(pinned, HomeAssistant(), None) == pinned
+
+
+def test_the_oldest_home_assistant_supported_is_the_one_tested_and_accepts_the_requirements() -> None:
+    core = HomeAssistant(pins={"qrcode": frozenset({"8.2"})})
+    assert list(check_minimum({"homeassistant": "2026.10.2"}, "2026.10.2", ["device-lib==1.2.0", "qrcode>=8.0"], core)) == []
+
+
+def test_the_oldest_home_assistant_supported_must_be_the_one_tested() -> None:
+    assert list(check_minimum({"homeassistant": "2026.10.2"}, "2026.11.1", [], HomeAssistant())) == [
+        "hacs.json requires Home Assistant '2026.10.2', but the tests of the oldest supported run '2026.11.1'"
+    ]
+
+
+def test_a_requirement_the_oldest_home_assistant_supported_refuses_is_reported() -> None:
+    core = HomeAssistant(pins={"qrcode": frozenset({"7.4"})})
+    assert list(check_minimum({"homeassistant": "2026.10.2"}, "2026.10.2", ["qrcode>=8.0"], core)) == [
+        "the manifest's 'qrcode>=8.0' excludes qrcode 7.4, which Home Assistant's own integrations pin"
+    ]
+
+
+def test_a_requirement_home_assistant_accepts_is_not_refused() -> None:
+    assert refused("device-lib==1.2.0", HomeAssistant()) is None
 
 
 def test_a_requirement_pinned_installed_and_pinned_for_the_tests_holds() -> None:

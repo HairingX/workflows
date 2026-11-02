@@ -31,9 +31,9 @@ and the templates of the files each of them keeps a copy of. How and why it is b
   release's assets: `card/actions/tests` and `card/actions/hacs`, `card/tools/` (the bundle and
   the card's contract) and `card/template/`, with `card/template/CLAUDE.md`.
 - `.github/workflows/`: the reusable workflows, prefixed by the kind they serve -
-  `ha-release.yml`, `ha-test-build.yml`, `ha-test-build-cleanup.yml`, `python-release.yml`,
-  `python-github-release.yml`, `card-release.yml`, `card-test-build.yml` - and
-  `release-drafter.yml` and `test-build-cleanup.yml`, shared by every kind. GitHub finds a
+  `ha-release.yml`, `ha-test-build.yml`, `ha-test-build-cleanup.yml`, `ha-harness-merge.yml`,
+  `python-release.yml`, `python-github-release.yml`, `card-release.yml`, `card-test-build.yml` -
+  and `release-drafter.yml` and `test-build-cleanup.yml`, shared by every kind. GitHub finds a
   reusable workflow only directly in that directory. Each checks out this repository at its own
   commit (`job.workflow_repository`, `job.workflow_sha`) for its tools. `ci.yml` and
   `publish.yml` are this repository's own.

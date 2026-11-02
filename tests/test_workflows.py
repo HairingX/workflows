@@ -19,6 +19,8 @@ CALLERS = sorted(path for template in TEMPLATES for path in (template / ".github
 WORKFLOWS = sorted([*(ROOT / ".github/workflows").glob("*.yml"), *CALLERS])
 ACTIONS = sorted(path for kind in ("ha", "python", "card") for path in (ROOT / kind / "actions").glob("*/action.yml"))
 BRANCH_TEST_BUILDS = ROOT / "common" / "tools" / "branch_test_builds.jq"
+HA_TESTS = ROOT / "ha/actions/tests/action.yml"
+HA_INSTALL = ROOT / "ha/actions/tests/install.sh"
 OWN = re.compile(r"uses: HairingX/workflows/([^@\s]+)@(\S+)")
 KINDS = ["ha", "python", "card"]
 MAJOR = "v2"
@@ -185,13 +187,72 @@ def test_every_script_of_an_action_passes_shellcheck(action: Path, tmp_path: Pat
         assert result.returncode == 0, result.stdout
 
 
-@pytest.mark.parametrize("action", [ROOT / "ha/actions/tests/action.yml", ROOT / "python/actions/tests/action.yml"])
-def test_the_tests_install_a_libraries_branch_in_place_of_its_pin(action: Path) -> None:
+@pytest.mark.skipif(shutil.which("shellcheck") is None, reason="shellcheck is not installed")
+def test_the_integrations_install_script_passes_shellcheck() -> None:
+    result = subprocess.run(["shellcheck", str(HA_INSTALL)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout
+
+
+@pytest.mark.parametrize("script", [HA_INSTALL, ROOT / "python/actions/tests/action.yml"])
+def test_the_tests_install_a_libraries_branch_in_place_of_its_pin(script: Path) -> None:
     """Installing the pins first fails where the branch needs what only a library's branch has."""
-    script = action.read_text()
-    assert '"$common/libraries.py" requirements "$requirements"' in script
-    assert "-r requirements-test.txt" not in script
-    assert script.index('libraries.py" requirements') < script.index('-r "$requirements"')
+    text = script.read_text()
+    assert '"$common/libraries.py" requirements "$requirements"' in text
+    assert "-r requirements-test.txt" not in text
+    assert text.index('libraries.py" requirements') < text.index('-r "$requirements"')
+
+
+def test_the_integrations_tests_run_on_the_oldest_home_assistant_supported_too() -> None:
+    """Every check that runs on the newest Home Assistant runs on the oldest, with its packages."""
+    steps = cast(list[dict[str, Any]], yaml.safe_load(HA_TESTS.read_text("utf-8"))["runs"]["steps"])
+    oldest = [step for step in steps if step.get("if") == "steps.minimum.outputs.version != ''"]
+    runs = "\n".join(str(step["run"]) for step in oldest)
+    assert '"homeassistant==$HOME_ASSISTANT" pytest-homeassistant-custom-component' in runs
+    assert "minimum-requirements" in runs
+    assert '"$RUNNER_TEMP/minimum/bin/pyright" --pythonpath "$RUNNER_TEMP/minimum/bin/python"' in runs
+    assert '"$RUNNER_TEMP/minimum/bin/python" -m pytest' in runs
+    assert "contract.py\" minimum-check" in runs
+    assert all("install.sh" in str(step["run"]) for step in steps if str(step.get("name", "")).startswith("Install"))
+
+
+def test_each_home_assistant_is_tested_on_the_python_it_requires() -> None:
+    steps = cast(list[dict[str, Any]], yaml.safe_load(HA_TESTS.read_text("utf-8"))["runs"]["steps"])
+    pythons = [step for step in steps if str(step.get("uses", "")).startswith("actions/setup-python@")]
+    assert [step["with"]["python-version"] for step in pythons] == [
+        "${{ steps.python.outputs.minimum }}",
+        "${{ steps.python.outputs.newest }}",
+    ]
+    venv = next(step for step in steps if "-m venv" in str(step.get("run", "")))
+    assert venv["env"]["PYTHON"] == "${{ steps.minimum-python.outputs.python-path }}"
+    assert '"$PYTHON" -m venv' in venv["run"]
+
+
+def test_only_dependabots_update_of_the_test_harness_is_merged() -> None:
+    caller = yaml.safe_load((ROOT / "ha/template/.github/workflows/harness-merge.yml").read_text("utf-8"))
+    condition = caller["jobs"]["merge"]["if"]
+    assert "github.event.pull_request.user.login == 'dependabot[bot]'" in condition
+    assert "startsWith(github.head_ref, 'dependabot/pip/pytest-homeassistant-custom-component-')" in condition
+
+
+def test_the_test_harness_is_merged_at_the_commit_tested_and_the_draft_follows() -> None:
+    steps = _steps(_workflow("ha-harness-merge.yml")["jobs"]["merge"])
+    assert '--match-head-commit "$HEAD"' in steps[0]["run"]
+    assert steps[0]["env"]["HEAD"] == "${{ github.event.pull_request.head.sha }}"
+    assert "gh workflow run release-drafter.yml" in steps[1]["run"]
+
+
+def test_release_drafter_updates_the_draft_when_started_by_hand() -> None:
+    caller = yaml.safe_load((ROOT / "common/template/.github/workflows/release-drafter.yml").read_text("utf-8"))
+    assert "workflow_dispatch" in caller[True]
+    job = _workflow("release-drafter.yml")["jobs"]["update_release_draft"]
+    assert "github.event_name == 'workflow_dispatch'" in job["if"]
+
+
+@pytest.mark.parametrize("workflow", ["ha-release.yml", "python-release.yml", "card-release.yml"])
+def test_a_release_accepts_a_draft_release_drafter_was_started_for_by_hand(workflow: str) -> None:
+    script = (ROOT / ".github/workflows" / workflow).read_text("utf-8")
+    assert 'select(.event == "push" or .event == "workflow_dispatch")' in script
+    assert "--event push" not in script
 
 
 def _workflow(name: str) -> dict[str, Any]:
