@@ -29,6 +29,10 @@ MAJOR = "v2"
 OWN_WORKFLOWS = {"ci.yml", "publish.yml"}
 """This repository's own workflows, which no integration calls."""
 
+SUPERSEDED = {"ha-harness-merge.yml"}
+"""Reusable workflows the template no longer calls, kept for copies not yet synced until the next
+major version."""
+
 BASH = "defaults:\n  run:\n    shell: bash\n"
 
 
@@ -80,7 +84,7 @@ def test_the_reusable_workflows_are_called_by_their_callers() -> None:
     reusable = {
         workflow.relative_to(ROOT).as_posix()
         for workflow in (ROOT / ".github/workflows").glob("*.yml")
-        if "workflow_call" in workflow.read_text("utf-8") and workflow.name not in OWN_WORKFLOWS
+        if "workflow_call" in workflow.read_text("utf-8") and workflow.name not in OWN_WORKFLOWS | SUPERSEDED
     }
     assert reusable <= called
     assert {action.parent.relative_to(ROOT).as_posix() for action in ACTIONS} <= called
@@ -227,18 +231,51 @@ def test_each_home_assistant_is_tested_on_the_python_it_requires() -> None:
     assert '"$PYTHON" -m venv' in venv["run"]
 
 
-def test_only_dependabots_update_of_the_test_harness_is_merged() -> None:
-    caller = yaml.safe_load((ROOT / "ha/template/.github/workflows/harness-merge.yml").read_text("utf-8"))
-    condition = caller["jobs"]["merge"]["if"]
-    assert "github.event.pull_request.user.login == 'dependabot[bot]'" in condition
-    assert "startsWith(github.head_ref, 'dependabot/pip/pytest-homeassistant-custom-component-')" in condition
+def test_only_dependabots_pull_requests_are_handled() -> None:
+    caller = yaml.safe_load((ROOT / "common/template/.github/workflows/dependabot-merge.yml").read_text("utf-8"))
+    assert caller["jobs"]["merge"]["if"] == "github.event.pull_request.user.login == 'dependabot[bot]'"
+    assert caller["jobs"]["merge"]["permissions"] == {
+        "actions": "write", "contents": "write", "issues": "write", "pull-requests": "write"
+    }
 
 
-def test_the_test_harness_is_merged_at_the_commit_tested_and_the_draft_follows() -> None:
-    steps = _steps(_workflow("ha-harness-merge.yml")["jobs"]["merge"])
-    assert '--match-head-commit "$HEAD"' in steps[0]["run"]
-    assert steps[0]["env"]["HEAD"] == "${{ github.event.pull_request.head.sha }}"
-    assert "gh workflow run release-drafter.yml" in steps[1]["run"]
+def _merge_steps() -> dict[str, dict[str, Any]]:
+    return {str(step["name"]): step for step in _steps(_workflow("dependabot-merge.yml")["jobs"]["merge"])}
+
+
+def test_an_update_is_merged_at_the_commit_tested_and_the_draft_follows() -> None:
+    steps = _merge_steps()
+    merge = steps["Wait for every check, then merge"]
+    assert merge["if"] == "steps.decide.outputs.action == 'merge'"
+    assert '--match-head-commit "$HEAD"' in merge["run"]
+    assert merge["env"]["HEAD"] == "${{ github.event.pull_request.head.sha }}"
+    assert steps["Update the release draft"]["if"] == "steps.merge.outputs.merged == 'true'"
+    assert "gh workflow run release-drafter.yml" in steps["Update the release draft"]["run"]
+
+
+def test_the_owner_is_assigned_only_an_update_that_needs_them() -> None:
+    steps = _merge_steps()
+    assert steps["Leave a new major version to the owner"]["if"] == "steps.decide.outputs.action == 'owner'"
+    assert '--add-assignee "$OWNER"' in steps["Leave a new major version to the owner"]["run"]
+    merge = steps["Wait for every check, then merge"]["run"]
+    assert merge.index('--add-assignee "$OWNER"') < merge.index("exit 1")
+    assert '--add-assignee' not in steps["Close an update made for a Home Assistant pre-release"]["run"]
+
+
+def test_no_template_assigns_dependabots_updates_or_proposes_actions() -> None:
+    for kind in KINDS:
+        config = yaml.safe_load((ROOT / kind / "template/.github/dependabot.yml").read_text("utf-8"))
+        for update in config["updates"]:
+            assert "assignees" not in update
+            assert update["package-ecosystem"] != "github-actions"
+            assert update["cooldown"] == {"default-days": 3}
+            assert all(group["update-types"] == ["minor", "patch"] for group in update["groups"].values())
+
+
+def test_the_test_harness_is_proposed_on_its_own() -> None:
+    config = yaml.safe_load((ROOT / "ha/template/.github/dependabot.yml").read_text("utf-8"))
+    pip = next(update for update in config["updates"] if update["package-ecosystem"] == "pip")
+    assert pip["groups"]["test-tools"]["exclude-patterns"] == ["pytest-homeassistant-custom-component"]
 
 
 def test_release_drafter_updates_the_draft_when_started_by_hand() -> None:

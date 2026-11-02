@@ -79,7 +79,7 @@ def test_the_shared_template_is_complete() -> None:
     assert (TEMPLATES["ha"] / "CLAUDE.md").is_file()
     assert {path for path in files(TEMPLATES["ha"]) if path.startswith(".github/workflows/")} == {
         ".github/workflows/close-inactive-issues.yml",
-        ".github/workflows/harness-merge.yml",
+        ".github/workflows/dependabot-merge.yml",
         ".github/workflows/library-released.yml",
         ".github/workflows/release-drafter.yml",
         ".github/workflows/release.yml",
@@ -99,6 +99,7 @@ def test_the_cards_template_is_complete() -> None:
         ".github/rulesets/branch-names.json",
         ".github/rulesets/main.json",
         ".github/workflows/close-inactive-issues.yml",
+        ".github/workflows/dependabot-merge.yml",
         ".github/workflows/release-drafter.yml",
         ".github/workflows/release.yml",
         ".github/workflows/test-build-cleanup.yml",
@@ -144,5 +145,6 @@ def test_the_common_template_holds_what_every_kind_of_repository_shares() -> Non
         ".github/release.yml",
         ".github/rulesets/branch-names.json",
         ".github/workflows/close-inactive-issues.yml",
+        ".github/workflows/dependabot-merge.yml",
         ".github/workflows/release-drafter.yml",
     ]
