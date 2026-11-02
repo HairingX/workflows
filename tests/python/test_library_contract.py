@@ -13,7 +13,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "demo_lib"
 dynamic = ["version"]
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 
 [tool.pyright]
 typeCheckingMode = "strict"
@@ -35,8 +35,8 @@ def test_a_library_to_the_standard_breaks_no_promise(tmp_path: Path) -> None:
     assert check(_library(tmp_path)) == []
 
 
-def test_the_tests_run_on_the_oldest_python_the_library_supports() -> None:
-    assert PYTHON_VERSIONS[0] == "3.12"
+def test_the_tests_run_only_on_the_python_home_assistant_runs_on() -> None:
+    assert PYTHON_VERSIONS == ("3.14",)
 
 
 def test_a_package_without_its_types_is_refused(tmp_path: Path) -> None:
@@ -52,7 +52,7 @@ def test_the_version_comes_only_from_the_tag() -> None:
         "[build-system] must require setuptools-scm, which works the version out from the tag",
         "[project] must not state a version; the release's tag is the version",
         '[project] dynamic must list "version"',
-        '[project] requires-python must be ">=3.12", the oldest Python the tests run',
+        '[project] requires-python must be ">=3.14", the oldest Python the tests run',
     ]
 
 

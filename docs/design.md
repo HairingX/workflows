@@ -21,6 +21,9 @@ repository is served from this one repository, with one version:
   trusted publishing takes no reusable workflow (it is bound to the repository's own workflow
   file), so the library's `release.yml` calls the shared release, uploads to PyPI itself, and
   calls the shared GitHub release after.
+  The libraries are made for the integrations and support only the Python Home Assistant runs
+  on: `requires-python` starts there, and the tests run on it alone, as an older Python would
+  cost a test run on every push for users there are none of.
 - `card/`: the Home Assistant dashboard cards'. A card's Release is the integrations' Release
   with a bundle instead of a zip: one ES module, built with the version embedded and attached to
   the release, from where HACS installs it.
