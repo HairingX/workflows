@@ -92,13 +92,29 @@ says only that it is the initial release; every later one carries the draft's no
 
 `ha/actions/tests` runs pyright strict, the tests with 100% coverage, `ha/tools/contract.py` and
 `common/tools/template.py check ha`. The contract: the manifest says `0.0.0`; `hacs.json` sets
-`zip_release`, names the zip after the domain and requires the Home Assistant the tests run;
+`zip_release`, names the zip after the domain and requires a Home Assistant no newer than the
+one the tests run;
 the requirements follow hassfest's rules for a custom integration - none Home Assistant itself
 installs, a minimum version that admits Home Assistant's for one its own integrations pin, `==`
 for any other - and `requirements-test.txt` pins what the tests run (skipped for a library built
 from a branch); `quality_scale.yaml` states
 every rule hassfest's `ALL_RULES` lists, with a comment for each rule not done; every
 translation holds English's keys.
+
+**The oldest Home Assistant supported.** `hacs.json` names the oldest Home Assistant an
+integration supports, and the tests hold it to that promise as to the newest: where it is older
+than the one the pinned harness is made for, the action installs it in a second environment,
+with the harness release pip resolves for it and `requirements-test.txt` rewritten to its own
+integrations' pins, and runs pyright, the tests and the requirements' rules again
+(`contract.py minimum`, `minimum-requirements`, `minimum-check`). Each environment runs on the
+oldest Python its Home Assistant requires on PyPI (`ha/tools/pythons.py`), so a Home Assistant
+moving to a newer Python needs no change here. The versions between the two are not tested:
+Home Assistant removes what integrations use only after a deprecation period of at least twelve
+months, and the tests of the newest fail on any deprecation reported. So an integration need
+not require the newest Home Assistant, and Dependabot's update of the harness is merged without
+a hand when it passes: `ha-harness-merge.yml` waits for every check of the pull request, merges
+the commit tested, and starts Release Drafter, as a merge made with a workflow's token starts no
+push run; Release accepts a draft from such a run.
 
 Release and Test build run the same action without the template check: a change to the
 template must not stop an urgent release before every integration is synced; pull requests and

@@ -4,12 +4,21 @@
                             and fails with one error per broken promise
     contract.py pins ROOT   prints, one per line, Home Assistant's pin of each package the
                             manifest's requirements install that its own integrations pin
+    contract.py minimum ROOT
+                            prints the oldest Home Assistant hacs.json supports, where it is
+                            older than the one installed, and nothing otherwise
+    contract.py minimum-requirements ROOT
+                            prints requirements-test.txt as the Home Assistant installed runs it
+    contract.py minimum-check ROOT
+                            checks, with the oldest Home Assistant supported installed, that it
+                            is hacs.json's and accepts the manifest's requirements
 
 The promises: the manifest says 0.0.0, as the version lives in the release's tag and zip; HACS
-installs a zip named after the domain and requires the Home Assistant the tests run; every
-requirement is one Home Assistant accepts, by hassfest's rules for a custom integration, pinned
-with == where those rules allow, run by the tests and pinned in requirements-test.txt; the quality
-scale states every rule; and every translation holds the same keys.
+installs a zip named after the domain and requires a Home Assistant no newer than the one the
+tests run, and the tests run that one too; every requirement is one Home Assistant accepts, by
+hassfest's rules for a custom integration, pinned with == where those rules allow, run by the
+tests and pinned in requirements-test.txt; the quality scale states every rule; and every
+translation holds the same keys.
 """
 
 import importlib.metadata
@@ -32,6 +41,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "common" / "tools")
 
 from repository import domain, integration  # noqa: E402
 from settings import check_standard, coverage, tool, transition  # noqa: E402
+
+HARNESS = "pytest-homeassistant-custom-component"
+"""The test harness, released for one Home Assistant version each."""
 
 QUALITY_SCALE_RULES = frozenset({
     # Bronze
@@ -97,17 +109,43 @@ def check_manifest(manifest: Mapping[str, Any]) -> Iterator[str]:
         yield f"manifest.json says version {manifest.get('version')!r}; it must say '0.0.0'"
 
 
+def _version(text: object) -> Version | None:
+    if not isinstance(text, str):
+        return None
+    try:
+        return Version(text)
+    except InvalidVersion:
+        return None
+
+
 def check_hacs(hacs: Mapping[str, Any], name: str, home_assistant: str | None) -> Iterator[str]:
-    """HACS installs the release's zip, named after the domain, on the Home Assistant tested."""
+    """HACS installs the release's zip, named after the domain, on a Home Assistant no newer than
+    `home_assistant`, the one tested."""
     if hacs.get("zip_release") is not True:
         yield "hacs.json must set zip_release to true"
     if hacs.get("filename") != f"{name}.zip":
         yield f"hacs.json names the zip {hacs.get('filename')!r}; it must be '{name}.zip'"
-    if hacs.get("homeassistant") != home_assistant:
+    required = _version(hacs.get("homeassistant"))
+    tested = _version(home_assistant)
+    if required is None:
         yield (
-            f"hacs.json requires Home Assistant {hacs.get('homeassistant')!r}, "
-            f"but the tests run {home_assistant!r}"
+            "hacs.json must give the oldest Home Assistant the integration supports in "
+            f"homeassistant, such as {home_assistant!r}"
         )
+    elif tested is None or required > tested:
+        yield (
+            f"hacs.json requires Home Assistant {hacs['homeassistant']!r}, "
+            f"newer than the {home_assistant!r} the tests run"
+        )
+
+
+def minimum(hacs: Mapping[str, Any], home_assistant: str | None) -> str | None:
+    """The oldest Home Assistant hacs.json supports, where it is older than `home_assistant`."""
+    required = _version(hacs.get("homeassistant"))
+    tested = _version(home_assistant)
+    if required is None or tested is None or required >= tested:
+        return None
+    return cast(str, hacs["homeassistant"])
 
 
 @dataclass(frozen=True)
@@ -225,6 +263,10 @@ def check_requirements(
     """
     test_pins = {canonicalize_name(r.name): r for r in _requirements(pinned) if not r.url}
     for text in requirements:
+        refusal = refused(text, core)
+        if refusal is not None:
+            yield refusal
+            continue
         requirement = Requirement(text)
         name = canonicalize_name(requirement.name)
         exact = [s.version for s in requirement.specifier if s.operator in ("==", "===")]
@@ -233,32 +275,12 @@ def check_requirements(
         tested_versions: set[str] = (
             {s.version for s in tested.specifier if s.operator == "=="} if tested else set()
         )
-        if name in core.dependencies:
-            yield f"{requirement.name} is a dependency of Home Assistant itself; the manifest must not list it"
-            continue
         theirs = core.pins.get(name)
         if theirs:
-            if exact:
-                yield (
-                    f"the manifest pins {text!r}, a package Home Assistant's own integrations use "
-                    f"({', '.join(sorted(theirs))}); require a minimum version instead, such as "
-                    f"'{requirement.name}>={min(theirs, key=Version)}'"
-                )
-                continue
-            if not all(requirement.specifier.contains(v, prereleases=True) for v in theirs):
-                yield f"the manifest's {text!r} excludes {requirement.name} {', '.join(sorted(theirs))}, which Home Assistant's own integrations pin"
-                continue
             if not tested_versions & theirs:
                 yield f"requirements-test.txt must pin {requirement.name} to the version Home Assistant's own integrations pin ({', '.join(sorted(theirs))})"
             elif version is not None and version not in theirs:
                 yield f"the tests run {requirement.name} {version}, not the version Home Assistant's own integrations pin"
-            continue
-        constraint = core.constraints.get(name)
-        if len(exact) != 1 or len(requirement.specifier) != 1:
-            yield f"the manifest's requirement {text!r} must pin one version with =="
-            continue
-        if constraint is not None and not constraint.contains(exact[0], prereleases=True):
-            yield f"the manifest pins {text!r}, which Home Assistant's package constraints ({requirement.name}{constraint}) exclude"
             continue
         if version is None:
             yield f"{requirement.name} is required by the manifest but not installed"
@@ -269,6 +291,79 @@ def check_requirements(
             yield f"the manifest pins {text!r}, but the tests run {requirement.name} {version}"
         if tested_versions != {exact[0]}:
             yield f"requirements-test.txt must pin {text!r}, as the manifest does"
+
+
+def refused(text: str, core: HomeAssistant) -> str | None:
+    """Why `core` refuses the manifest's requirement `text`, by hassfest's rules, if it does."""
+    requirement = Requirement(text)
+    name = canonicalize_name(requirement.name)
+    exact = [s.version for s in requirement.specifier if s.operator in ("==", "===")]
+    if name in core.dependencies:
+        return f"{requirement.name} is a dependency of Home Assistant itself; the manifest must not list it"
+    theirs = core.pins.get(name)
+    if theirs:
+        if exact:
+            return (
+                f"the manifest pins {text!r}, a package Home Assistant's own integrations use "
+                f"({', '.join(sorted(theirs))}); require a minimum version instead, such as "
+                f"'{requirement.name}>={min(theirs, key=Version)}'"
+            )
+        if not all(requirement.specifier.contains(v, prereleases=True) for v in theirs):
+            return f"the manifest's {text!r} excludes {requirement.name} {', '.join(sorted(theirs))}, which Home Assistant's own integrations pin"
+        return None
+    if len(exact) != 1 or len(requirement.specifier) != 1:
+        return f"the manifest's requirement {text!r} must pin one version with =="
+    constraint = core.constraints.get(name)
+    if constraint is not None and not constraint.contains(exact[0], prereleases=True):
+        return f"the manifest pins {text!r}, which Home Assistant's package constraints ({requirement.name}{constraint}) exclude"
+    return None
+
+
+def minimum_test_pins(pinned: list[str], core: HomeAssistant, harness: str | None) -> list[str]:
+    """The lines of requirements-test.txt as an older Home Assistant runs them.
+
+    `harness` is the version of the test harness installed for that Home Assistant. A package
+    Home Assistant itself installs is left to it, and one its own integrations pin is at their
+    version, as Home Assistant installs it.
+    """
+    lines: list[str] = []
+    for line in pinned:
+        text = line.split("#", 1)[0].strip()
+        if not text:
+            continue
+        try:
+            requirement = Requirement(text)
+        except InvalidRequirement:
+            lines.append(text)
+            continue
+        name = canonicalize_name(requirement.name)
+        if requirement.url:
+            lines.append(text)
+        elif name == HARNESS and harness is not None:
+            lines.append(f"{requirement.name}=={harness}")
+        elif name in core.dependencies:
+            continue
+        elif name in core.pins:
+            lines.append(f"{requirement.name}=={max(core.pins[name], key=Version)}")
+        else:
+            lines.append(text)
+    return lines
+
+
+def check_minimum(
+    hacs: Mapping[str, Any], home_assistant: str | None, requirements: list[str], core: HomeAssistant
+) -> Iterator[str]:
+    """`home_assistant`, the one tested, is the oldest hacs.json supports, and `core`, what it
+    requires, accepts every requirement of the manifest."""
+    if hacs.get("homeassistant") != home_assistant:
+        yield (
+            f"hacs.json requires Home Assistant {hacs.get('homeassistant')!r}, "
+            f"but the tests of the oldest supported run {home_assistant!r}"
+        )
+    for text in requirements:
+        refusal = refused(text, core)
+        if refusal is not None:
+            yield refusal
 
 
 def check_test_pins(requirements: list[str], pinned: list[str], core: HomeAssistant) -> Iterator[str]:
@@ -395,6 +490,27 @@ def main(arguments: list[str]) -> None:
             requirements = cast(list[str], manifest.get("requirements", []))
             for pin in home_assistant_pins(requirements, _installed_home_assistant(), _requires):
                 print(pin)
+        case ["minimum", root]:
+            version = minimum(_json(Path(root) / "hacs.json"), _installed("homeassistant"))
+            if version is not None:
+                print(version)
+        case ["minimum-requirements", root]:
+            pinned = (Path(root) / "requirements-test.txt").read_text("utf-8").splitlines()
+            for line in minimum_test_pins(pinned, _installed_home_assistant(), _installed(HARNESS)):
+                print(line)
+        case ["minimum-check", root]:
+            manifest = _json(integration(Path(root)) / "manifest.json")
+            errors = list(check_minimum(
+                _json(Path(root) / "hacs.json"),
+                _installed("homeassistant"),
+                cast(list[str], manifest.get("requirements", [])),
+                _installed_home_assistant(),
+            ))
+            for error in errors:
+                print(f"::error::{error}")
+            if errors:
+                sys.exit(1)
+            print("The oldest Home Assistant supported accepts the integration's requirements.")
         case _:
             sys.exit(__doc__)
 

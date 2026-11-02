@@ -123,9 +123,12 @@ jobs:
         env:
           SHA: ${{ steps.main.outputs.sha }}
         run: |
+          # A merge made with a workflow's token starts no push run, so the workflow that made it
+          # starts Release Drafter by hand.
           run=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow release-drafter.yml \
-            --branch main --event push --limit 1 --json headSha,status,conclusion \
-            --jq '.[0] | "\(.headSha) \(.status) \(.conclusion)"')
+            --branch main --limit 20 --json event,headSha,status,conclusion \
+            --jq '[.[] | select(.event == "push" or .event == "workflow_dispatch")][0] // empty
+              | "\(.headSha) \(.status) \(.conclusion)"')
           echo "Newest Release Drafter run on main: ${run:-none}"
           if [[ "$run" == "$SHA completed success" ]]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
