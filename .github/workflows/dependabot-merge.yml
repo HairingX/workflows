@@ -1,0 +1,114 @@
+name: Merge Dependabot's update
+
+# Called by a repository's Merge Dependabot's updates workflow on Dependabot's pull requests, so
+# that the owner hears of one only when it needs them. An update that is no new major version is
+# merged once every other check of its commit has passed. The test harness made for a Home
+# Assistant pre-release is closed. A new major version, or an update a check fails, is assigned to
+# the owner and left open. A merge made with this workflow's token starts no push run, so it then
+# starts Release Drafter, whose draft Release requires up to date with main.
+on:
+  workflow_call:
+
+permissions: {}
+
+# The shell given explicitly, so GitHub runs every step with pipefail.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  merge:
+    name: Merge once every check passes
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    concurrency:
+      group: dependabot-merge-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      actions: write
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Check out the workflows' tools
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .workflows
+          persist-credentials: false
+
+      - name: Read what Dependabot updates
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Decide what becomes of the update
+        id: decide
+        env:
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          NAMES: ${{ steps.metadata.outputs.dependency-names }}
+          NEW_VERSION: ${{ steps.metadata.outputs.new-version }}
+        run: |
+          python3 .workflows/common/tools/dependabot.py decide "$UPDATE_TYPE" "$NAMES" "$NEW_VERSION" \
+            | tee -a "$GITHUB_OUTPUT"
+
+      - name: Close an update made for a Home Assistant pre-release
+        if: steps.decide.outputs.action == 'close'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.html_url }}
+          WHY: ${{ steps.decide.outputs.why }}
+        run: |
+          gh pr close "$PR" --comment "Closed: $WHY. Only final Home Assistant releases are taken."
+
+      - name: Leave a new major version to the owner
+        if: steps.decide.outputs.action == 'owner'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.html_url }}
+          OWNER: ${{ github.repository_owner }}
+          WHY: ${{ steps.decide.outputs.why }}
+        run: |
+          gh pr edit "$PR" --add-assignee "$OWNER"
+          gh pr comment "$PR" --body "Left open for @$OWNER: $WHY."
+
+      # The ruleset refuses the merge while a check it requires has not passed, so a check not yet
+      # reported only delays it. The commit is named, so a later push is never merged untested.
+      - name: Wait for every check, then merge
+        if: steps.decide.outputs.action == 'merge'
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.html_url }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          OWNER: ${{ github.repository_owner }}
+          WORKFLOW: ${{ github.workflow }}
+        run: |
+          while true; do
+            if [[ "$(gh pr view "$PR" --json state --jq .state)" != "OPEN" ]]; then
+              echo "The pull request is no longer open."
+              exit 0
+            fi
+            buckets=$(gh pr checks "$PR" --json bucket,workflow \
+              --jq '.[] | select(.workflow != env.WORKFLOW) | .bucket' || true)
+            if grep -qxE 'fail|cancel' <<< "$buckets"; then
+              gh pr edit "$PR" --add-assignee "$OWNER"
+              gh pr comment "$PR" --body "Left open for @$OWNER: a check failed."
+              echo "::error::A check failed; the update is left to the owner."
+              exit 1
+            fi
+            if [[ -n "$buckets" ]] && ! grep -qvxE 'pass|skipping' <<< "$buckets" \
+              && gh pr merge "$PR" --squash --match-head-commit "$HEAD"; then
+              echo "merged=true" >> "$GITHUB_OUTPUT"
+              break
+            fi
+            sleep 30
+          done
+
+      - name: Update the release draft
+        if: steps.merge.outputs.merged == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release-drafter.yml --repo "$GITHUB_REPOSITORY" --ref main

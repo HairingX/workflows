@@ -111,8 +111,11 @@ If publishing fails part-way, **Re-run failed jobs** resumes it: it accepts the 
 the same commit, removes a draft an interrupted upload left behind, and uploads the bundle to the
 release it already created. **Re-run all jobs** is refused once the version is tagged.
 
-Actions are referred to by their major version where they publish one; Dependabot proposes a new
-major, and updates to the npm packages, as pull requests.
+Actions are referred to by their major version where they publish one. Dependabot proposes each update of the npm packages once it is three days old, all
+that are no new major version in one pull request a week, and **Merge Dependabot's updates**
+merges it once every check passes, then updates the release draft. It assigns the owner only an
+update that needs them: a new major version, or one a check fails. The actions are the
+template's, kept up to date in HairingX/workflows.
 
 ## Testing a branch on a real Home Assistant
 

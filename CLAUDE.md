@@ -8,14 +8,15 @@ and the templates of the files each of them keeps a copy of. How and why it is b
 ## What lives here
 
 - `common/`: what every kind of repository shares.
-  - `common/tools/`: the version rules (`release_version.py`), what a repository says about
-    itself under `[tool.hairingx-workflows]` in its `pyproject.toml` (`settings.py`), the
-    libraries taken from a branch (`libraries.py`), the template check and sync
-    (`template.py check|sync KIND ROOT`), and the jq filter that finds a branch's test builds
-    (`branch_test_builds.jq`).
+  - `common/tools/`: the version rules (`release_version.py`), what becomes of Dependabot's
+    updates (`dependabot.py`), what a repository says about itself under
+    `[tool.hairingx-workflows]` in its `pyproject.toml` (`settings.py`), the libraries taken from
+    a branch (`libraries.py`), the template check and sync (`template.py check|sync KIND ROOT`),
+    and the jq filter that finds a branch's test builds (`branch_test_builds.jq`).
   - `common/release-drafter.yml`: Release Drafter's configuration.
   - `common/template/`: the files every repository keeps word for word: the release-notes
-    categories, the branch-names ruleset, and the Release Drafter and inactive-issues workflows.
+    categories, the branch-names ruleset, and the Release Drafter, inactive-issues and
+    Dependabot-merge workflows.
 - `ha/`: the Home Assistant integrations'.
   - `ha/actions/tests`, `ha/actions/libraries-released`: composite actions, used by the
     integrations' workflows at `@v2` and by the reusable workflows from their own commit.
@@ -33,10 +34,10 @@ and the templates of the files each of them keeps a copy of. How and why it is b
 - `.github/workflows/`: the reusable workflows, prefixed by the kind they serve -
   `ha-release.yml`, `ha-test-build.yml`, `ha-test-build-cleanup.yml`, `ha-harness-merge.yml`,
   `python-release.yml`, `python-github-release.yml`, `card-release.yml`, `card-test-build.yml` -
-  and `release-drafter.yml` and `test-build-cleanup.yml`, shared by every kind. GitHub finds a
-  reusable workflow only directly in that directory. Each checks out this repository at its own
-  commit (`job.workflow_repository`, `job.workflow_sha`) for its tools. `ci.yml` and
-  `publish.yml` are this repository's own.
+  and `release-drafter.yml`, `test-build-cleanup.yml` and `dependabot-merge.yml`, shared by
+  every kind. GitHub finds a reusable workflow only directly in that directory. Each checks out
+  this repository at its own commit (`job.workflow_repository`, `job.workflow_sha`) for its
+  tools. `ci.yml` and `publish.yml` are this repository's own.
 - `tests/`: `tests/common/`, `tests/ha/`, `tests/python/`, `tests/card/`, and
   `tests/test_workflows.py` for every workflow and action.
 
