@@ -232,10 +232,11 @@ jobs:
           path: .workflows
           persist-credentials: false
 
+      # The newest Node LTS: the bundle runs in the browser, so Node only builds and tests it.
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: lts/*
           cache: npm
 
       - name: Set up Python

@@ -43,7 +43,8 @@ obvious from the name - one or two lines, no narrative.
 - The card is TypeScript and lit, in `src/`, bundled by vite in library mode into one ES module,
   `dist/<filename>`, `<filename>` being `hacs.json`'s `filename`. `dist/` is built, never
   committed, and in `.gitignore`.
-- npm, on Node 22, installs exactly what the committed `package-lock.json` locks: `npm ci`.
+- npm, on the newest Node LTS, installs exactly what the committed `package-lock.json` locks:
+  `npm ci`.
 - The scripts the tests run: `npm run lint` (eslint, and prettier's check), `npm run typecheck`
   (`tsc --noEmit`, strict), `npm test` (vitest with happy-dom) and `npm run build`. The build
   embeds the version the environment variable `CARD_VERSION` gives it, `0.0.0` without one.

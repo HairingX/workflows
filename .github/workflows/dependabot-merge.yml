@@ -71,8 +71,11 @@ jobs:
           OWNER: ${{ github.repository_owner }}
           WHY: ${{ steps.decide.outputs.why }}
         run: |
-          gh pr edit "$PR" --add-assignee "$OWNER"
-          gh pr comment "$PR" --body "Left open for @$OWNER: $WHY."
+          # Dependabot updating the pull request runs this again; the owner hears of it once.
+          if ! gh pr view "$PR" --json assignees --jq '.assignees[].login' | grep -qx "$OWNER"; then
+            gh pr edit "$PR" --add-assignee "$OWNER"
+            gh pr comment "$PR" --body "Left open for @$OWNER: $WHY."
+          fi
 
       # The ruleset refuses the merge while a check it requires has not passed, so a check not yet
       # reported only delays it. The commit is named, so a later push is never merged untested.
@@ -94,8 +97,10 @@ jobs:
             buckets=$(gh pr checks "$PR" --json bucket,workflow \
               --jq '.[] | select(.workflow != env.WORKFLOW) | .bucket' || true)
             if grep -qxE 'fail|cancel' <<< "$buckets"; then
-              gh pr edit "$PR" --add-assignee "$OWNER"
-              gh pr comment "$PR" --body "Left open for @$OWNER: a check failed."
+              if ! gh pr view "$PR" --json assignees --jq '.assignees[].login' | grep -qx "$OWNER"; then
+                gh pr edit "$PR" --add-assignee "$OWNER"
+                gh pr comment "$PR" --body "Left open for @$OWNER: a check failed."
+              fi
               echo "::error::A check failed; the update is left to the owner."
               exit 1
             fi
