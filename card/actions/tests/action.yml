@@ -23,10 +23,11 @@ inputs:
 runs:
   using: composite
   steps:
+    # The newest Node LTS: the bundle runs in the browser, so Node only builds and tests it.
     - name: Set up Node
       uses: actions/setup-node@v7
       with:
-        node-version: "22"
+        node-version: lts/*
         cache: npm
         cache-dependency-path: ${{ inputs.path }}/package-lock.json
 

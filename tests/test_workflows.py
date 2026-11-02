@@ -272,6 +272,19 @@ def test_no_template_assigns_dependabots_updates_or_proposes_actions() -> None:
             assert all(group["update-types"] == ["minor", "patch"] for group in update["groups"].values())
 
 
+def test_the_owner_hears_of_an_update_only_once() -> None:
+    steps = _merge_steps()
+    for script in (steps["Leave a new major version to the owner"]["run"], steps["Wait for every check, then merge"]["run"]):
+        assert script.index("grep -qx \"$OWNER\"") < script.index("gh pr comment")
+
+
+def test_a_card_is_built_and_tested_on_the_newest_node_lts() -> None:
+    for path in (ROOT / "card/actions/tests/action.yml", ROOT / ".github/workflows/card-release.yml", ROOT / ".github/workflows/card-test-build.yml"):
+        text = path.read_text("utf-8")
+        assert "node-version: lts/*" in text
+        assert '"22"' not in text
+
+
 def test_the_test_harness_is_proposed_on_its_own() -> None:
     config = yaml.safe_load((ROOT / "ha/template/.github/dependabot.yml").read_text("utf-8"))
     pip = next(update for update in config["updates"] if update["package-ecosystem"] == "pip")
