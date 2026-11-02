@@ -24,8 +24,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "common" / "tools")
 from package import import_name  # noqa: E402
 from settings import check_standard, coverage, tool, transition  # noqa: E402
 
-PYTHON_VERSIONS = ("3.12", "3.13", "3.14")
-"""The Python versions the tests run on, the oldest first."""
+PYTHON_VERSIONS = ("3.14",)
+"""The Python versions the tests run on, the oldest first: only the one Home Assistant runs on,
+as the libraries are made for its integrations."""
 REQUIRES_PYTHON = f">={PYTHON_VERSIONS[0]}"
 TEST_TOOLS = ("pyright", "pytest", "pytest-cov")
 """The tools the shared tests run, which requirements-test.txt must pin."""
