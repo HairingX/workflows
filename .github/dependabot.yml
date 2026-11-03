@@ -1,5 +1,7 @@
 # Proposes updates to the pinned actions and test tools as pull requests, which CI then checks
-# before anything is merged.
+# before anything is merged. An update of an action is assigned to the owner, as it reaches every
+# repository once published; the test tools' are merged by Merge Dependabot's updates once every
+# check passes, together, and each version only once it is three days old.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -23,7 +25,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     labels:
       - dependencies
-    assignees:
-      - HairingX
+    groups:
+      test-tools:
+        update-types: [minor, patch]

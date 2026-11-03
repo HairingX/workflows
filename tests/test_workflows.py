@@ -26,7 +26,7 @@ KINDS = ["ha", "python", "card"]
 MAJOR = "v2"
 """The major version the callers use, which Publish moves."""
 
-OWN_WORKFLOWS = {"ci.yml", "publish.yml"}
+OWN_WORKFLOWS = {"ci.yml", "publish.yml", "merge-dependabot.yml"}
 """This repository's own workflows, which no integration calls."""
 
 SUPERSEDED = {"ha-harness-merge.yml"}
@@ -249,7 +249,7 @@ def test_an_update_is_merged_at_the_commit_tested_and_the_draft_follows() -> Non
     assert merge["if"] == "steps.decide.outputs.action == 'merge'"
     assert '--match-head-commit "$HEAD"' in merge["run"]
     assert merge["env"]["HEAD"] == "${{ github.event.pull_request.head.sha }}"
-    assert steps["Update the release draft"]["if"] == "steps.merge.outputs.merged == 'true'"
+    assert steps["Update the release draft"]["if"].startswith("steps.merge.outputs.merged == 'true'")
     assert "gh workflow run release-drafter.yml" in steps["Update the release draft"]["run"]
 
 
@@ -276,6 +276,19 @@ def test_the_owner_hears_of_an_update_only_once() -> None:
     steps = _merge_steps()
     for script in (steps["Leave a new major version to the owner"]["run"], steps["Wait for every check, then merge"]["run"]):
         assert script.index("grep -qx \"$OWNER\"") < script.index("gh pr comment")
+
+
+def test_this_repository_merges_only_dependabots_updates_of_its_own_test_tools() -> None:
+    caller = _workflow("merge-dependabot.yml")["jobs"]["merge"]
+    assert "startsWith(github.head_ref, 'dependabot/pip/')" in caller["if"]
+    assert caller["uses"] == "./.github/workflows/dependabot-merge.yml"
+    assert caller["with"] == {"release-drafter": False}
+
+
+def test_release_drafter_is_started_after_a_merge_only_where_there_is_one() -> None:
+    reusable = cast(dict[Any, Any], _workflow("dependabot-merge.yml"))
+    assert reusable[True]["workflow_call"]["inputs"]["release-drafter"]["default"] is True
+    assert "inputs.release-drafter" in _merge_steps()["Update the release draft"]["if"]
 
 
 def test_a_card_is_built_and_tested_on_the_newest_node_lts() -> None:

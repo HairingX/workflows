@@ -37,7 +37,7 @@ and the templates of the files each of them keeps a copy of. How and why it is b
   and `release-drafter.yml`, `test-build-cleanup.yml` and `dependabot-merge.yml`, shared by
   every kind. GitHub finds a reusable workflow only directly in that directory. Each checks out
   this repository at its own commit (`job.workflow_repository`, `job.workflow_sha`) for its
-  tools. `ci.yml` and `publish.yml` are this repository's own.
+  tools. `ci.yml`, `publish.yml` and `merge-dependabot.yml` are this repository's own.
 - `tests/`: `tests/common/`, `tests/ha/`, `tests/python/`, `tests/card/`, and
   `tests/test_workflows.py` for every workflow and action.
 

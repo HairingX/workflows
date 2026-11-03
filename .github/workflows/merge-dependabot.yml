@@ -1,0 +1,29 @@
+name: Merge Dependabot's updates
+
+# This repository's own: Dependabot's updates of the tools its own tests run are merged once every
+# check passes, as they reach no other repository. An update of an action reaches every
+# repository once published, so it is left to the owner.
+on:
+  pull_request:
+
+permissions: {}
+
+# The shell given explicitly, so GitHub runs every step with pipefail.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  merge:
+    name: Merge Dependabot's update
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]'
+      && startsWith(github.head_ref, 'dependabot/pip/')
+    permissions:
+      actions: write
+      contents: write
+      issues: write
+      pull-requests: write
+    uses: ./.github/workflows/dependabot-merge.yml
+    with:
+      release-drafter: false

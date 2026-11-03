@@ -8,6 +8,11 @@ name: Merge Dependabot's update
 # starts Release Drafter, whose draft Release requires up to date with main.
 on:
   workflow_call:
+    inputs:
+      release-drafter:
+        description: Whether to start Release Drafter after a merge; a repository without one says no.
+        type: boolean
+        default: true
 
 permissions: {}
 
@@ -113,7 +118,7 @@ jobs:
           done
 
       - name: Update the release draft
-        if: steps.merge.outputs.merged == 'true'
+        if: steps.merge.outputs.merged == 'true' && inputs.release-drafter
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run release-drafter.yml --repo "$GITHUB_REPOSITORY" --ref main
