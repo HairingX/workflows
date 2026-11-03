@@ -59,6 +59,20 @@ GitHub's own mechanism for CI shared between repositories:
 - `@v2` is a major tag, moved by Publish; this follows the integrations' rule of referring to
   actions by their major version.
 
+**The canary.** This repository's own tests check the tools, not what a repository sees when it
+runs them. So CI also runs the shared tests of the commit checked - on every pull request, and in
+Publish on the commit it publishes - on `main` of one repository of each kind: `ha_duka_connect`,
+`event_connect` and `ha_aula_connect_card`, as the checks "Canary: integration", "Canary: library"
+and "Canary: card". The integration is one that supports a Home Assistant older than the one it
+pins, so that the tests on the oldest supported run too. The template check is left out, as a
+repository follows a change to the template only once it is synced. Where a canary fails, the same
+repository is run again with the published actions (`@v2`): a canary fails only where they pass,
+and the change is what breaks it; where they fail too, it warns that the repository's own `main` is
+broken, and leaves the change alone. A new major version is published without the canary, as the
+repositories stay at the major before until each is synced. Dependabot's updates of this
+repository, its actions' among them, are merged once every check passes, the canaries' included: an
+update reaches the other repositories only when it is published.
+
 ## What differs between integrations, and where it is read
 
 Nothing here names an integration. The domain is the one directory under `custom_components/`,

@@ -278,11 +278,73 @@ def test_the_owner_hears_of_an_update_only_once() -> None:
         assert script.index("grep -qx \"$OWNER\"") < script.index("gh pr comment")
 
 
-def test_this_repository_merges_only_dependabots_updates_of_its_own_test_tools() -> None:
+def test_this_repository_merges_every_dependabot_update_its_checks_pass() -> None:
     caller = _workflow("merge-dependabot.yml")["jobs"]["merge"]
-    assert "startsWith(github.head_ref, 'dependabot/pip/')" in caller["if"]
+    assert caller["if"] == "github.event.pull_request.user.login == 'dependabot[bot]'"
     assert caller["uses"] == "./.github/workflows/dependabot-merge.yml"
     assert caller["with"] == {"release-drafter": False}
+    config = yaml.safe_load((ROOT / ".github/dependabot.yml").read_text("utf-8"))
+    for update in config["updates"]:
+        assert "assignees" not in update
+        assert update["cooldown"] == {"default-days": 3}
+        assert all(group["update-types"] == ["minor", "patch"] for group in update["groups"].values())
+
+
+CANARIES = {
+    "canary-integration": ("HairingX/ha_duka_connect", "ha"),
+    "canary-library": ("HairingX/event_connect", "python"),
+    "canary-card": ("HairingX/ha_aula_connect_card", "card"),
+}
+
+
+def _canary_steps(job: str) -> dict[str, dict[str, Any]]:
+    return {str(step.get("id", step["name"])): step for step in _steps(_workflow("ci.yml")["jobs"][job])}
+
+
+@pytest.mark.parametrize("job", CANARIES)
+def test_the_canary_runs_a_repositorys_main_with_this_commits_tests_and_the_published_ones(job: str) -> None:
+    repository, kind = CANARIES[job]
+    steps = list(_canary_steps(job).values())
+    assert steps[0]["with"]["repository"] == repository
+    assert steps[0]["with"]["ref"] == "main"
+    assert steps[1]["with"] == {"ref": "${{ inputs.ref }}", "path": ".workflows", "persist-credentials": False}
+    by_id = _canary_steps(job)
+    assert by_id["change"]["uses"] == f"./.workflows/{kind}/actions/tests"
+    assert by_id["published"]["uses"] == f"HairingX/workflows/{kind}/actions/tests@{MAJOR}"
+    assert by_id["change"]["with"] == by_id["published"]["with"]
+    assert by_id["change"]["with"]["template-check"] == "false"
+    if kind == "card":
+        assert steps[0]["with"]["path"] == by_id["change"]["with"]["path"] == "card"
+    assert by_id["change"]["continue-on-error"] is by_id["published"]["continue-on-error"] is True
+    assert by_id["published"]["if"] == "steps.change.outcome == 'failure'"
+
+
+@pytest.mark.parametrize(
+    ("change", "published", "fails", "says"),
+    [
+        ("success", "skipped", False, "passes with this commit's actions"),
+        ("failure", "success", True, "::error::"),
+        ("failure", "failure", False, "::warning::"),
+    ],
+)
+def test_the_canary_fails_only_a_change_that_breaks_a_repository_the_published_tests_pass(
+    change: str, published: str, fails: bool, says: str
+) -> None:
+    verdict = [step for step in _steps(_workflow("ci.yml")["jobs"]["canary-card"]) if "run" in step][-1]
+    env = {**verdict["env"], "CHANGE": change, "PUBLISHED": published}
+    result = subprocess.run(["bash", "-c", verdict["run"]], env=env, capture_output=True, text=True, check=False)
+    assert (result.returncode != 0) is fails
+    assert says in result.stdout
+
+
+def test_the_canary_runs_on_pull_requests_and_publish_but_a_new_major_version() -> None:
+    ci = cast(dict[Any, Any], _workflow("ci.yml"))
+    assert ci[True]["workflow_call"]["inputs"]["new-major"]["default"] is False
+    for job in CANARIES:
+        assert ci["jobs"][job]["if"] == "github.event_name != 'push' && !inputs.new-major"
+    publish = _workflow("publish.yml")
+    assert publish["jobs"]["check"]["with"]["new-major"] == "${{ needs.prepare.outputs.new-major == 'true' }}"
+    assert 'grep -qx "v${VERSION%%.*}" "$RUNNER_TEMP/tags"' in _steps(publish["jobs"]["prepare"])[-1]["run"]
 
 
 def test_release_drafter_is_started_after_a_merge_only_where_there_is_one() -> None:

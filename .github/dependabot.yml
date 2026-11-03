@@ -1,7 +1,6 @@
-# Proposes updates to the pinned actions and test tools as pull requests, which CI then checks
-# before anything is merged. An update of an action is assigned to the owner, as it reaches every
-# repository once published; the test tools' are merged by Merge Dependabot's updates once every
-# check passes, together, and each version only once it is three days old.
+# Proposes updates to the pinned actions and test tools as pull requests, which CI and its canary
+# check before Merge Dependabot's updates merges them. The owner is assigned only a new major
+# version, or an update a check fails.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -16,10 +15,13 @@ updates:
       - /card/template
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     labels:
       - dependencies
-    assignees:
-      - HairingX
+    groups:
+      actions:
+        update-types: [minor, patch]
 
   - package-ecosystem: pip
     directory: /

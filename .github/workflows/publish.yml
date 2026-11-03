@@ -33,6 +33,7 @@ jobs:
     outputs:
       tag: ${{ steps.version.outputs.tag }}
       major: ${{ steps.version.outputs.major }}
+      new-major: ${{ steps.version.outputs.new-major }}
       sha: ${{ steps.main.outputs.sha }}
     steps:
       - name: Refuse to run from anything but main
@@ -68,6 +69,8 @@ jobs:
           python common/tools/release_version.py next "final release" "" "$VERSION" "$RUNNER_TEMP/tags" \
             | grep '^tag=' | tee -a "$GITHUB_OUTPUT"
           echo "major=v${VERSION%%.*}" | tee -a "$GITHUB_OUTPUT"
+          if grep -qx "v${VERSION%%.*}" "$RUNNER_TEMP/tags"; then new_major=false; else new_major=true; fi
+          echo "new-major=$new_major" | tee -a "$GITHUB_OUTPUT"
 
   check:
     name: CI
@@ -77,6 +80,8 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       ref: ${{ needs.prepare.outputs.sha }}
+      # The repositories stay at the major before until each is synced.
+      new-major: ${{ needs.prepare.outputs.new-major == 'true' }}
 
   publish:
     name: Tag and publish
