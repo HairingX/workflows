@@ -45,7 +45,7 @@ and the templates of the files each of them keeps a copy of. How and why it is b
 
 1. Change it here, with its test, through a pull request. CI runs the tests, pyright strict, and
    actionlint with shellcheck on every workflow and every action's script, and the canary: the
-   change's shared tests on `main` of `ha-charge-smarter`, `event_connect` and
+   change's shared tests on `main` of `ha_duka_connect`, `event_connect` and
    `ha_aula_connect_card`. A canary fails only where the published actions pass that
    repository; where they fail too, it warns that the repository itself is broken. Dependabot's
    updates here are merged once every check passes.

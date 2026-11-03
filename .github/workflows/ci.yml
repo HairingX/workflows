@@ -60,6 +60,8 @@ jobs:
           actionlint ha/template/.github/workflows/*.yml python/template/.github/workflows/*.yml \
             card/template/.github/workflows/*.yml common/template/.github/workflows/*.yml
 
+  # An integration that supports a Home Assistant older than the one it pins, so that the tests on
+  # the oldest supported run too.
   canary-integration:
     name: "Canary: integration"
     # Every pull request, and Publish: a push is checked by its pull request.
@@ -67,10 +69,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - name: Check out HairingX/ha-charge-smarter's main
+      - name: Check out HairingX/ha_duka_connect's main
         uses: actions/checkout@v7
         with:
-          repository: HairingX/ha-charge-smarter
+          repository: HairingX/ha_duka_connect
           ref: main
           persist-credentials: false
 
@@ -82,7 +84,7 @@ jobs:
           persist-credentials: false
 
       # The template is left out: a change to it is synced into each repository after Publish.
-      - name: Run HairingX/ha-charge-smarter's tests with this commit's actions
+      - name: Run HairingX/ha_duka_connect's tests with this commit's actions
         id: change
         continue-on-error: true
         uses: ./.workflows/ha/actions/tests
@@ -95,7 +97,7 @@ jobs:
         if: steps.change.outcome == 'failure'
         run: git clean -ffdxq -e .workflows
 
-      - name: Run HairingX/ha-charge-smarter's tests with the published actions
+      - name: Run HairingX/ha_duka_connect's tests with the published actions
         id: published
         if: steps.change.outcome == 'failure'
         continue-on-error: true
@@ -103,11 +105,11 @@ jobs:
         with:
           template-check: "false"
 
-      - name: Tell whether this commit breaks HairingX/ha-charge-smarter
+      - name: Tell whether this commit breaks HairingX/ha_duka_connect
         env:
           CHANGE: ${{ steps.change.outcome }}
           PUBLISHED: ${{ steps.published.outcome }}
-          REPOSITORY: HairingX/ha-charge-smarter
+          REPOSITORY: HairingX/ha_duka_connect
         run: |
           if [ "$CHANGE" = success ]; then
             echo "$REPOSITORY passes with this commit's actions."

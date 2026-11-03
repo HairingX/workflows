@@ -291,7 +291,7 @@ def test_this_repository_merges_every_dependabot_update_its_checks_pass() -> Non
 
 
 CANARIES = {
-    "canary-integration": ("HairingX/ha-charge-smarter", "ha"),
+    "canary-integration": ("HairingX/ha_duka_connect", "ha"),
     "canary-library": ("HairingX/event_connect", "python"),
     "canary-card": ("HairingX/ha_aula_connect_card", "card"),
 }
