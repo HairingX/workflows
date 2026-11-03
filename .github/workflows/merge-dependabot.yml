@@ -1,8 +1,7 @@
 name: Merge Dependabot's updates
 
-# This repository's own: Dependabot's updates of the tools its own tests run are merged once every
-# check passes, as they reach no other repository. An update of an action reaches every
-# repository once published, so it is left to the owner.
+# This repository's own: Dependabot's updates are merged once every check passes, the canary's
+# among them. An update of an action reaches the other repositories only once published.
 on:
   pull_request:
 
@@ -16,9 +15,7 @@ defaults:
 jobs:
   merge:
     name: Merge Dependabot's update
-    if: >-
-      github.event.pull_request.user.login == 'dependabot[bot]'
-      && startsWith(github.head_ref, 'dependabot/pip/')
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     permissions:
       actions: write
       contents: write

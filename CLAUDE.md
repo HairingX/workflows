@@ -44,10 +44,14 @@ and the templates of the files each of them keeps a copy of. How and why it is b
 ## Changing anything
 
 1. Change it here, with its test, through a pull request. CI runs the tests, pyright strict, and
-   actionlint with shellcheck on every workflow and every action's script.
-2. Publish it: run **Publish** on `main` with the next version. It tags the checked commit and
-   moves the major tag to it, so every repository uses it from its next run. There is one
-   version for every kind.
+   actionlint with shellcheck on every workflow and every action's script, and the canary: the
+   change's shared tests on `main` of `ha-charge-smarter`, `event_connect` and
+   `ha_aula_connect_card`. A canary fails only where the published actions pass that
+   repository; where they fail too, it warns that the repository itself is broken. Dependabot's
+   updates here are merged once every check passes.
+2. Publish it: run **Publish** on `main` with the next version. It runs CI and the canary on the
+   commit, tags it and moves the major tag to it, so every repository uses it from its next run;
+   a new major version is published without the canary. There is one version for every kind.
 3. A change to a template turns the tests of every repository that keeps it red until its
    copies are synced: open a pull request in each with `common/tools/template.py sync KIND`. A
    change the copies must follow at the same moment - an input added to a reusable workflow, or

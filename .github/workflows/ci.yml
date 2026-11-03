@@ -1,7 +1,8 @@
 name: CI
 
-# The tools' tests, pyright strict, and actionlint with shellcheck on every workflow. Also called
-# by Publish, on the exact commit it releases.
+# The tools' tests, pyright strict, and actionlint with shellcheck on every workflow; and the
+# canary: the shared tests of this commit run on one repository of each kind. Also called by
+# Publish, on the exact commit it releases.
 on:
   push:
   pull_request:
@@ -12,6 +13,13 @@ on:
         description: The commit to check.
         required: true
         type: string
+      new-major:
+        description: >-
+          Whether the commit is published as a new major version, which the repositories at the
+          major before need not pass.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -51,3 +59,185 @@ jobs:
           actionlint
           actionlint ha/template/.github/workflows/*.yml python/template/.github/workflows/*.yml \
             card/template/.github/workflows/*.yml common/template/.github/workflows/*.yml
+
+  canary-integration:
+    name: "Canary: integration"
+    # Every pull request, and Publish: a push is checked by its pull request.
+    if: github.event_name != 'push' && !inputs.new-major
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out HairingX/ha-charge-smarter's main
+        uses: actions/checkout@v7
+        with:
+          repository: HairingX/ha-charge-smarter
+          ref: main
+          persist-credentials: false
+
+      - name: Check out this commit's actions
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          path: .workflows
+          persist-credentials: false
+
+      # The template is left out: a change to it is synced into each repository after Publish.
+      - name: Run HairingX/ha-charge-smarter's tests with this commit's actions
+        id: change
+        continue-on-error: true
+        uses: ./.workflows/ha/actions/tests
+        with:
+          template-check: "false"
+
+      # Run again only on failure, to tell a change that breaks the repository from a repository
+      # already broken.
+      - name: Clean the checkout of what the failed run left
+        if: steps.change.outcome == 'failure'
+        run: git clean -ffdxq -e .workflows
+
+      - name: Run HairingX/ha-charge-smarter's tests with the published actions
+        id: published
+        if: steps.change.outcome == 'failure'
+        continue-on-error: true
+        uses: HairingX/workflows/ha/actions/tests@v2
+        with:
+          template-check: "false"
+
+      - name: Tell whether this commit breaks HairingX/ha-charge-smarter
+        env:
+          CHANGE: ${{ steps.change.outcome }}
+          PUBLISHED: ${{ steps.published.outcome }}
+          REPOSITORY: HairingX/ha-charge-smarter
+        run: |
+          if [ "$CHANGE" = success ]; then
+            echo "$REPOSITORY passes with this commit's actions."
+          elif [ "$PUBLISHED" = success ]; then
+            echo "::error::$REPOSITORY passes with the published actions but fails with this commit's: this change breaks it. The failing step is above."
+            exit 1
+          else
+            echo "::warning::$REPOSITORY fails with the published actions too: the fault is in $REPOSITORY's main, not in this change."
+          fi
+
+  canary-library:
+    name: "Canary: library"
+    # Every pull request, and Publish: a push is checked by its pull request.
+    if: github.event_name != 'push' && !inputs.new-major
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out HairingX/event_connect's main
+        uses: actions/checkout@v7
+        with:
+          repository: HairingX/event_connect
+          ref: main
+          persist-credentials: false
+          # setuptools-scm works the package's version out from the tags.
+          fetch-depth: 0
+
+      - name: Check out this commit's actions
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          path: .workflows
+          persist-credentials: false
+
+      # The template is left out: a change to it is synced into each repository after Publish.
+      - name: Run HairingX/event_connect's tests with this commit's actions
+        id: change
+        continue-on-error: true
+        uses: ./.workflows/python/actions/tests
+        with:
+          python-version: "3.14"
+          template-check: "false"
+
+      # Run again only on failure, to tell a change that breaks the repository from a repository
+      # already broken.
+      - name: Clean the checkout of what the failed run left
+        if: steps.change.outcome == 'failure'
+        run: git clean -ffdxq -e .workflows
+
+      - name: Run HairingX/event_connect's tests with the published actions
+        id: published
+        if: steps.change.outcome == 'failure'
+        continue-on-error: true
+        uses: HairingX/workflows/python/actions/tests@v2
+        with:
+          python-version: "3.14"
+          template-check: "false"
+
+      - name: Tell whether this commit breaks HairingX/event_connect
+        env:
+          CHANGE: ${{ steps.change.outcome }}
+          PUBLISHED: ${{ steps.published.outcome }}
+          REPOSITORY: HairingX/event_connect
+        run: |
+          if [ "$CHANGE" = success ]; then
+            echo "$REPOSITORY passes with this commit's actions."
+          elif [ "$PUBLISHED" = success ]; then
+            echo "::error::$REPOSITORY passes with the published actions but fails with this commit's: this change breaks it. The failing step is above."
+            exit 1
+          else
+            echo "::warning::$REPOSITORY fails with the published actions too: the fault is in $REPOSITORY's main, not in this change."
+          fi
+
+  canary-card:
+    name: "Canary: card"
+    # Every pull request, and Publish: a push is checked by its pull request.
+    if: github.event_name != 'push' && !inputs.new-major
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out HairingX/ha_aula_connect_card's main
+        uses: actions/checkout@v7
+        with:
+          repository: HairingX/ha_aula_connect_card
+          ref: main
+          # Beside the actions, never around them: the card's lint checks every file under it.
+          path: card
+          persist-credentials: false
+
+      - name: Check out this commit's actions
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          path: .workflows
+          persist-credentials: false
+
+      # The template is left out: a change to it is synced into each repository after Publish.
+      - name: Run HairingX/ha_aula_connect_card's tests with this commit's actions
+        id: change
+        continue-on-error: true
+        uses: ./.workflows/card/actions/tests
+        with:
+          path: card
+          template-check: "false"
+
+      # Run again only on failure, to tell a change that breaks the repository from a repository
+      # already broken.
+      - name: Clean the checkout of what the failed run left
+        if: steps.change.outcome == 'failure'
+        run: git -C card clean -ffdxq
+
+      - name: Run HairingX/ha_aula_connect_card's tests with the published actions
+        id: published
+        if: steps.change.outcome == 'failure'
+        continue-on-error: true
+        uses: HairingX/workflows/card/actions/tests@v2
+        with:
+          path: card
+          template-check: "false"
+
+      - name: Tell whether this commit breaks HairingX/ha_aula_connect_card
+        env:
+          CHANGE: ${{ steps.change.outcome }}
+          PUBLISHED: ${{ steps.published.outcome }}
+          REPOSITORY: HairingX/ha_aula_connect_card
+        run: |
+          if [ "$CHANGE" = success ]; then
+            echo "$REPOSITORY passes with this commit's actions."
+          elif [ "$PUBLISHED" = success ]; then
+            echo "::error::$REPOSITORY passes with the published actions but fails with this commit's: this change breaks it. The failing step is above."
+            exit 1
+          else
+            echo "::warning::$REPOSITORY fails with the published actions too: the fault is in $REPOSITORY's main, not in this change."
+          fi
