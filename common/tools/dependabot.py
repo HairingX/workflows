@@ -4,9 +4,10 @@
         prints action=merge, action=owner or action=close, and why=..., for the update of the
         comma-separated NAMES to NEW_VERSION, of Dependabot's UPDATE_TYPE
 
-An update that is no new major version is merged once its checks pass. The Home Assistant test
-harness is released for every Home Assistant version, betas included, under version numbers that
-do not say which: one made for a pre-release is closed. A new major version is left to the owner.
+An update that is no new major version is merged once its checks pass, and a new major version is
+left to the owner. A Home Assistant test harness is released for every Home Assistant version,
+betas included: one made for a pre-release is closed. Its major version is Home Assistant's year,
+which says nothing about what changed, so the Home Assistant it is made for decides instead.
 
 The standard library only: it runs before any Python is set up.
 """
@@ -18,8 +19,9 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any, cast
 
-HARNESS = "pytest-homeassistant-custom-component"
-"""The Home Assistant test harness, released for one Home Assistant version each."""
+HARNESSES = ("pytest-homeassistant", "pytest-homeassistant-custom-component")
+"""The Home Assistant test harnesses, each released for one Home Assistant version: Home
+Assistant's own, and the one it replaced, accepted until every integration has moved."""
 MAJOR = "version-update:semver-major"
 HOME_ASSISTANT = re.compile(r"^homeassistant\s*==\s*([^\s;]+)", re.I)
 PRE_RELEASE = re.compile(r"\d(a|b|rc|\.?dev)\d*", re.I)
@@ -32,9 +34,10 @@ def _pypi(url: str) -> dict[str, Any]:
         return cast(dict[str, Any], json.load(response))
 
 
-def harness_home_assistant(version: str, fetch: Fetch) -> str | None:
-    """The Home Assistant release the test harness `version` is made for, None if it names none."""
-    info = cast(dict[str, Any], fetch(f"https://pypi.org/pypi/{HARNESS}/{version}/json")["info"])
+def harness_home_assistant(harness: str, version: str, fetch: Fetch) -> str | None:
+    """The Home Assistant release `version` of the test harness `harness` is made for, None if it
+    names none."""
+    info = cast(dict[str, Any], fetch(f"https://pypi.org/pypi/{harness}/{version}/json")["info"])
     for line in cast(list[str], info.get("requires_dist") or []):
         found = HOME_ASSISTANT.match(line)
         if found is not None:
@@ -50,12 +53,15 @@ def pre_release(version: str) -> bool:
 def decide(update_type: str, names: str, new_version: str, fetch: Fetch) -> tuple[str, str]:
     """What becomes of the update, and why where it is not merged."""
     dependencies = [name.strip() for name in names.split(",") if name.strip()]
-    if HARNESS in dependencies:
-        home_assistant = harness_home_assistant(new_version, fetch)
+    harness = next((name for name in HARNESSES if name in dependencies), None)
+    if harness is not None:
+        home_assistant = harness_home_assistant(harness, new_version, fetch)
         if home_assistant is None:
-            return "owner", f"{HARNESS} {new_version} names no Home Assistant release"
+            return "owner", f"{harness} {new_version} names no Home Assistant release"
         if pre_release(home_assistant):
-            return "close", f"{HARNESS} {new_version} is made for Home Assistant {home_assistant}, a pre-release"
+            return "close", f"{harness} {new_version} is made for Home Assistant {home_assistant}, a pre-release"
+        if dependencies == [harness]:
+            return "merge", ""
     if update_type == MAJOR:
         return "owner", "it is a new major version"
     return "merge", ""

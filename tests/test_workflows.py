@@ -211,7 +211,8 @@ def test_the_integrations_tests_run_on_the_oldest_home_assistant_supported_too()
     steps = cast(list[dict[str, Any]], yaml.safe_load(HA_TESTS.read_text("utf-8"))["runs"]["steps"])
     oldest = [step for step in steps if step.get("if") == "steps.minimum.outputs.version != ''"]
     runs = "\n".join(str(step["run"]) for step in oldest)
-    assert '"homeassistant==$HOME_ASSISTANT" pytest-homeassistant-custom-component' in runs
+    assert '"homeassistant==$HOME_ASSISTANT" "$HARNESS"' in runs
+    assert any(step.get("env", {}).get("HARNESS") == "${{ steps.python.outputs.harness }}" for step in oldest)
     assert "minimum-requirements" in runs
     assert '"$RUNNER_TEMP/minimum/bin/pyright" --pythonpath "$RUNNER_TEMP/minimum/bin/python"' in runs
     assert '"$RUNNER_TEMP/minimum/bin/python" -m pytest' in runs
@@ -363,7 +364,7 @@ def test_a_card_is_built_and_tested_on_the_newest_node_lts() -> None:
 def test_the_test_harness_is_proposed_on_its_own() -> None:
     config = yaml.safe_load((ROOT / "ha/template/.github/dependabot.yml").read_text("utf-8"))
     pip = next(update for update in config["updates"] if update["package-ecosystem"] == "pip")
-    assert pip["groups"]["test-tools"]["exclude-patterns"] == ["pytest-homeassistant-custom-component"]
+    assert pip["groups"]["test-tools"]["exclude-patterns"] == ["pytest-homeassistant"]
 
 
 def test_release_drafter_updates_the_draft_when_started_by_hand() -> None:

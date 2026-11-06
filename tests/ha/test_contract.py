@@ -92,7 +92,7 @@ def test_the_oldest_home_assistant_supported_is_tested_only_when_older() -> None
 def test_the_oldest_home_assistant_runs_its_own_harness_and_its_own_integrations_pins() -> None:
     pinned = [
         "# The harness pins the Home Assistant release the tests run.",
-        "pytest-homeassistant-custom-component==0.13.380",
+        "pytest-homeassistant==2027.1.0",
         "pyright==1.1.414  # the type check",
         "",
         "device-lib==1.2.0",
@@ -102,8 +102,8 @@ def test_the_oldest_home_assistant_runs_its_own_harness_and_its_own_integrations
         "-c constraints.txt",
     ]
     core = HomeAssistant(dependencies=frozenset({"aiohttp"}), pins={"qrcode": frozenset({"8.1", "8.2"})})
-    assert minimum_test_pins(pinned, core, "0.13.373") == [
-        "pytest-homeassistant-custom-component==0.13.373",
+    assert minimum_test_pins(pinned, core, "2026.11.0") == [
+        "pytest-homeassistant==2026.11.0",
         "pyright==1.1.414",
         "device-lib==1.2.0",
         "qrcode==8.2",
@@ -113,8 +113,13 @@ def test_the_oldest_home_assistant_runs_its_own_harness_and_its_own_integrations
 
 
 def test_without_a_harness_installed_its_pin_is_kept() -> None:
-    pinned = ["pytest-homeassistant-custom-component==0.13.380"]
+    pinned = ["pytest-homeassistant==2027.1.0"]
     assert minimum_test_pins(pinned, HomeAssistant(), None) == pinned
+
+
+def test_the_harness_it_replaced_is_rewritten_too() -> None:
+    pinned = ["pytest-homeassistant-custom-component==0.13.380"]
+    assert minimum_test_pins(pinned, HomeAssistant(), "0.13.373") == ["pytest-homeassistant-custom-component==0.13.373"]
 
 
 def test_the_oldest_home_assistant_supported_is_the_one_tested_and_accepts_the_requirements() -> None:
@@ -389,3 +394,18 @@ def test_the_highest_of_several_pins_is_taken() -> None:
 def test_a_package_home_assistant_requires_itself_is_left_to_it() -> None:
     core = HomeAssistant(dependencies=frozenset({"requests"}), pins={"requests": frozenset({"2.0"})})
     assert home_assistant_pins(["aula_lib==1.0.0"], core, REQUIRES.get) == []
+
+
+@pytest.mark.parametrize(
+    ("installed", "expected"),
+    [
+        ({"pytest-homeassistant": "2026.11.0"}, "2026.11.0"),
+        ({"pytest-homeassistant-custom-component": "0.13.375"}, "0.13.375"),
+        ({}, None),
+    ],
+)
+def test_the_installed_harness_is_either_one(
+    monkeypatch: pytest.MonkeyPatch, installed: dict[str, str], expected: str | None
+) -> None:
+    monkeypatch.setattr(contract, "_installed", installed.get)
+    assert contract.installed_harness() == expected

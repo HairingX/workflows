@@ -42,8 +42,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "common" / "tools")
 from repository import domain, integration  # noqa: E402
 from settings import check_standard, coverage, tool, transition  # noqa: E402
 
-HARNESS = "pytest-homeassistant-custom-component"
-"""The test harness, released for one Home Assistant version each."""
+HARNESSES = ("pytest-homeassistant", "pytest-homeassistant-custom-component")
+"""The test harnesses, each released for one Home Assistant version: Home Assistant's own, and
+the one it replaced, accepted until every integration has moved."""
 
 QUALITY_SCALE_RULES = frozenset({
     # Bronze
@@ -92,6 +93,11 @@ def installed_version(name: str) -> str | None:
 
 def _installed(name: str) -> str | None:
     return installed_version(name)
+
+
+def installed_harness() -> str | None:
+    """The version of the test harness installed, None if none is."""
+    return next((version for name in HARNESSES if (version := _installed(name)) is not None), None)
 
 
 def released(version: str) -> bool:
@@ -339,7 +345,7 @@ def minimum_test_pins(pinned: list[str], core: HomeAssistant, harness: str | Non
         name = canonicalize_name(requirement.name)
         if requirement.url:
             lines.append(text)
-        elif name == HARNESS and harness is not None:
+        elif name in HARNESSES and harness is not None:
             lines.append(f"{requirement.name}=={harness}")
         elif name in core.dependencies:
             continue
@@ -496,7 +502,7 @@ def main(arguments: list[str]) -> None:
                 print(version)
         case ["minimum-requirements", root]:
             pinned = (Path(root) / "requirements-test.txt").read_text("utf-8").splitlines()
-            for line in minimum_test_pins(pinned, _installed_home_assistant(), _installed(HARNESS)):
+            for line in minimum_test_pins(pinned, _installed_home_assistant(), installed_harness()):
                 print(line)
         case ["minimum-check", root]:
             manifest = _json(integration(Path(root)) / "manifest.json")

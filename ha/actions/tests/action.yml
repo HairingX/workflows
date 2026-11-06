@@ -92,12 +92,13 @@ runs:
         BRANCH: ${{ inputs.branch }}
         OWNER: ${{ github.repository_owner }}
         HOME_ASSISTANT: ${{ steps.minimum.outputs.version }}
+        HARNESS: ${{ steps.python.outputs.harness }}
         PYTHON: ${{ steps.minimum-python.outputs.python-path }}
       run: |
         "$PYTHON" -m venv "$RUNNER_TEMP/minimum"
         oldest="$RUNNER_TEMP/minimum/bin/python"
         # pip finds the release of the test harness made for that Home Assistant.
-        "$oldest" -m pip install packaging==26.3 "homeassistant==$HOME_ASSISTANT" pytest-homeassistant-custom-component
+        "$oldest" -m pip install packaging==26.3 "homeassistant==$HOME_ASSISTANT" "$HARNESS"
         "$oldest" "$GITHUB_ACTION_PATH/../../tools/contract.py" minimum-requirements . \
           > "$RUNNER_TEMP/minimum-requirements.txt"
         "$GITHUB_ACTION_PATH/install.sh" "$oldest" "$RUNNER_TEMP/minimum-requirements.txt" "$BRANCH" "$OWNER"

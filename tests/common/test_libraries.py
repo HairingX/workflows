@@ -59,14 +59,14 @@ def test_a_dependabot_branch_takes_no_library_from_a_branch(
 def test_a_branch_library_takes_the_place_of_its_pin() -> None:
     lines = [
         "# Pinned.",
-        "pytest-homeassistant-custom-component==0.13.373",
+        "pytest-homeassistant==2026.11.0",
         "Device-Lib==1.4.0  # the manifest's",
         "base_lib==2.0.0",
     ]
     branch = "device_lib @ https://github.com/Owner/device_lib/archive/abc.tar.gz"
     assert replace_requirements(lines, [branch]) == [
         "# Pinned.",
-        "pytest-homeassistant-custom-component==0.13.373",
+        "pytest-homeassistant==2026.11.0",
         "base_lib==2.0.0",
         branch,
     ]
