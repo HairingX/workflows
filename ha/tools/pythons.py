@@ -1,8 +1,9 @@
 """The Python each Home Assistant the tests run requires, read from PyPI.
 
-    pythons.py ROOT     prints newest=X.Y, the oldest Python the Home Assistant of the test
-                        harness pinned in requirements-test.txt runs on, and minimum=X.Y, that of
-                        the oldest Home Assistant hacs.json supports, where it is another release
+    pythons.py ROOT     prints harness=NAME, the test harness requirements-test.txt pins,
+                        newest=X.Y, the oldest Python the Home Assistant of that harness runs on,
+                        and minimum=X.Y, that of the oldest Home Assistant hacs.json supports,
+                        where it is another release
 
 The standard library only: it runs before any Python is set up.
 """
@@ -15,7 +16,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
-HARNESS = re.compile(r"^\s*pytest[-_.]homeassistant[-_.]custom[-_.]component\s*==\s*([^\s#;]+)", re.I)
+HARNESSES = ("pytest-homeassistant", "pytest-homeassistant-custom-component")
+"""The test harnesses, each released for one Home Assistant version: Home Assistant's own, and
+the one it replaced, accepted until every integration has moved."""
+HARNESS = re.compile(
+    r"^\s*(pytest[-_.]homeassistant(?:[-_.]custom[-_.]component)?)\s*==\s*([^\s#;]+)", re.I
+)
 HOME_ASSISTANT = re.compile(r"^homeassistant\s*==\s*([^\s;]+)", re.I)
 LOWEST = re.compile(r">=\s*(\d+)\.(\d+)")
 
@@ -39,24 +45,27 @@ def lowest_python(requires_python: str | None) -> str:
     return f"{found[1]}.{found[2]}"
 
 
-def harness_pin(lines: list[str]) -> str:
-    """The version of the test harness the lines of requirements-test.txt pin."""
+def harness_pin(lines: list[str]) -> tuple[str, str]:
+    """The name and version of the test harness the lines of requirements-test.txt pin."""
     for line in lines:
         found = HARNESS.match(line)
         if found is not None:
-            return found[1]
-    sys.exit("::error::requirements-test.txt must pin pytest-homeassistant-custom-component with ==")
+            return re.sub(r"[-_.]+", "-", found[1].lower()), found[2]
+    sys.exit(f"::error::requirements-test.txt must pin {HARNESSES[0]} with ==")
 
 
 def pythons(root: Path, fetch: Fetch) -> dict[str, str]:
-    """The Python of the newest Home Assistant tested, and of the oldest supported, by name."""
-    harness = harness_pin((root / "requirements-test.txt").read_text("utf-8").splitlines())
-    harness_info = _info(fetch, "pytest-homeassistant-custom-component", harness)
-    requires = cast(list[str], harness_info.get("requires_dist") or [])
+    """The harness, and the Python of the newest Home Assistant tested and of the oldest
+    supported, by name."""
+    harness, version = harness_pin((root / "requirements-test.txt").read_text("utf-8").splitlines())
+    requires = cast(list[str], _info(fetch, harness, version).get("requires_dist") or [])
     newest = next((found[1] for line in requires if (found := HOME_ASSISTANT.match(line))), None)
     if newest is None:
-        sys.exit(f"::error::pytest-homeassistant-custom-component {harness} pins no Home Assistant")
-    found = {"newest": lowest_python(_info(fetch, "homeassistant", newest).get("requires_python"))}
+        sys.exit(f"::error::{harness} {version} pins no Home Assistant")
+    found = {
+        "harness": harness,
+        "newest": lowest_python(_info(fetch, "homeassistant", newest).get("requires_python")),
+    }
     hacs = cast(dict[str, Any], json.loads((root / "hacs.json").read_text("utf-8")))
     oldest = hacs.get("homeassistant")
     found["minimum"] = (

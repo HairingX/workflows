@@ -136,9 +136,14 @@ proposes a version once it is three days old, all that are no new major version 
 request a week, and assigns no one; `dependabot-merge.yml` then merges each once every check of
 its commit passes, and starts Release Drafter, as a merge made with a workflow's token starts no
 push run; Release accepts a draft from such a run. It assigns the owner a new major version, or
-an update a check fails. The test harness is released for every Home Assistant version, betas
-included, under version numbers that do not say which: `common/tools/dependabot.py` reads from
-PyPI the Home Assistant it is made for, and one made for a pre-release is closed. The repositories
+an update a check fails. The test harness, `pytest-homeassistant`, is released with every Home
+Assistant version, betas included, under the same version number, and pins that Home Assistant:
+`common/tools/dependabot.py` reads from PyPI the Home Assistant it is made for, and one made for
+a pre-release is closed. Its major version is Home Assistant's year, so a harness update is
+decided by that Home Assistant alone. `pytest-homeassistant-custom-component`, the harness it
+replaced, which stopped at Home Assistant 2026.10, is accepted the same way until every
+integration has moved; the oldest Home Assistant an integration on Home Assistant's harness can
+support is 2026.11.0, the first it was released for. The repositories
 propose no updates of actions: theirs are copies of the template, whose actions this repository's
 Dependabot keeps up to date. Packages Home Assistant decides and the owner's own libraries are
 left out, as the tests follow Home Assistant and a library is pinned once released.
