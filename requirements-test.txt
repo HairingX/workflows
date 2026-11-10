@@ -4,4 +4,4 @@ packaging==26.3
 pytest==9.2.0
 pyright==1.1.414
 PyYAML==6.0.3
-types-PyYAML==6.0.12.20261030
+types-PyYAML==6.0.12.20261103
