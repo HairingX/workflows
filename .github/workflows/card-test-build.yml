@@ -77,7 +77,7 @@ jobs:
             | sed -n 's/^draft_tag=//p')
           gh api --paginate "repos/$GITHUB_REPOSITORY/tags?per_page=100" --jq '.[].name' \
             > "$RUNNER_TEMP/tags"
-          python "$COMMON_TOOLS/release_version.py" test-build "$draft" "$RUNNER_TEMP/tags" \
+          python "$COMMON_TOOLS/release_version.py" test-build "$draft" "$RUNNER_TEMP/tags" "$GITHUB_RUN_NUMBER" \
             | tee -a "$GITHUB_OUTPUT"
 
   test:

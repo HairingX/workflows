@@ -124,9 +124,10 @@ HACS installs only releases, pre-releases and the default branch. To try a devel
 on a real Home Assistant, run the **Test build** workflow from the Actions tab on that branch:
 
 1. It tests and validates the branch's commit, then publishes it as a pre-release such as
-   `v0.1.0b3`: the next release's version - the draft's, or the patch after the last release
-   when there is no draft - with the first free `b<n>`. The branch's commit is tagged; the
-   version is set only in the bundle the pre-release carries.
+   `v0.1.0b57`: the next release's version - the draft's, or the patch after the last release
+   when there is no draft - with `b<n>` the number of its run, or higher, so that a new test
+   build is always higher than any before it and HACS offers it as an update. The branch's
+   commit is tagged; the version is set only in the bundle the pre-release carries.
 2. In Home Assistant, switch beta versions on for this repository in HACS, and install the test
    build; HACS updates the dashboard resource, so a reload of the browser loads it. Switch beta
    versions off and install the latest release to go back.
