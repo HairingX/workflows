@@ -11,10 +11,12 @@ release_version.py next KIND DRAFT OVERRIDE TAGS [PUBLISHED]
                                          either may be empty; TAGS is a file of every tag,
                                          PUBLISHED one of every version a package index has
                                          taken, one per line
-release_version.py test-build DRAFT TAGS prints version=, tag= and prerelease= lines for the
-                                         first free b<n> of the next release, such as 0.2.9b3:
-                                         the version of the draft release's tag DRAFT, or, when
-                                         empty, the patch after the highest final release
+release_version.py test-build DRAFT TAGS RUN
+                                         prints version=, tag= and prerelease= lines for a test
+                                         build of the next release, numbered b<RUN> or higher,
+                                         such as 0.2.9b57: the version of the draft release's
+                                         tag DRAFT, or, when empty, the patch after the highest
+                                         final release; RUN is the run's number
 release_version.py check VERSION         prints version=, tag= and prerelease= lines
 release_version.py changes SINCE MERGED  refuses a release when MERGED, a file of the pull
                                          requests merged since the release SINCE, is empty
@@ -187,8 +189,13 @@ def next_release_base(draft: str, known: list[Version]) -> str:
     return f"{last.major}.{last.minor}.{last.micro + 1}"
 
 
-def next_test_build(base: str, tags: list[str]) -> Version:
-    """The first `base`b<n> no tag in `tags` has, `base` being the next release's version."""
+def next_test_build(base: str, tags: list[str], run: int) -> Version:
+    """The test build `base`b<n> of the run numbered `run`, `base` being the next release's version.
+
+    It is b<run>, or one higher than every b<n> of `base` in `tags`, as a run's number only grows
+    and a test build replaces the one before it: a new test build is always higher than any
+    before it, so HACS offers it as an update.
+    """
     release = _canonical(base)
     if release.is_prerelease:
         sys.exit(
@@ -204,8 +211,7 @@ def next_test_build(base: str, tags: list[str]) -> Version:
             and Version(version.base_version) == release
         ):
             used.add(version.pre[1])
-    number = next(n for n in range(1, len(used) + 2) if n not in used)
-    return Version(f"{release}b{number}")
+    return Version(f"{release}b{max([run, *(number + 1 for number in used)])}")
 
 
 def previous_tag(version: Version, tags: list[str]) -> str | None:
@@ -296,9 +302,9 @@ def main(arguments: list[str]) -> None:
             _print(version)
             print(f"previous_tag={previous_tag(version, _lines(tags)) or ''}")
             print(f"uses_draft={'true' if uses_draft else 'false'}")
-        case ["test-build", draft, tags]:
+        case ["test-build", draft, tags, run] if run.isdigit():
             lines = _lines(tags)
-            _print(next_test_build(next_release_base(draft, known_versions(lines)), lines))
+            _print(next_test_build(next_release_base(draft, known_versions(lines)), lines, int(run)))
         case ["check", text]:
             _print(_canonical(text))
         case ["changes", since, merged]:

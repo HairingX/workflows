@@ -221,20 +221,25 @@ class TestUsesDraft(unittest.TestCase):
 
 
 class TestTestBuildVersion(unittest.TestCase):
-    def test_the_first_test_build_is_b1(self) -> None:
-        self.assertEqual(next_test_build("0.2.9", ["v0.2.8"]), Version("0.2.9b1"))
+    def test_a_test_build_is_numbered_by_its_run(self) -> None:
+        self.assertEqual(next_test_build("0.2.9", ["v0.2.8"], 57), Version("0.2.9b57"))
 
-    def test_the_first_free_number_is_taken(self) -> None:
-        tags = ["v0.2.9b1", "v0.2.9b3", "v0.3.0b2", "v0.2.9rc1"]
-        self.assertEqual(next_test_build("0.2.9", tags), Version("0.2.9b2"))
-        self.assertEqual(next_test_build("0.3.0", tags), Version("0.3.0b1"))
+    def test_a_test_build_is_higher_than_every_one_before_it(self) -> None:
+        tags = ["v0.2.9b1", "v0.2.9b60", "v0.3.0b2", "v0.2.9rc1"]
+        self.assertEqual(next_test_build("0.2.9", tags, 57), Version("0.2.9b61"))
+        self.assertEqual(next_test_build("0.3.0", tags, 57), Version("0.3.0b57"))
+
+    def test_a_new_test_build_is_never_numbered_as_one_it_replaced(self) -> None:
+        first = next_test_build("0.0.12", ["v0.0.11"], 7)
+        second = next_test_build("0.0.12", ["v0.0.11"], 8)
+        self.assertGreater(second, first)
 
     def test_the_base_must_be_a_final_version(self) -> None:
         for base in ("0.2.9rc1", "0.2", "v0.2.9"):
             with self.subTest(base=base), self.assertRaisesRegex(
                 SystemExit, "::error::"
             ):
-                next_test_build(base, [])
+                next_test_build(base, [], 1)
 
 
 class TestNextReleaseBase(unittest.TestCase):
@@ -437,14 +442,14 @@ class TestCommandLine(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             tags = Path(directory) / "tags"
             tags.write_text("v0.2.8\nv0.2.9b1\n", encoding="utf-8")
-            output = _run(["test-build", "0.2.9", str(tags)])
-        self.assertEqual(output, "version=0.2.9b2\ntag=v0.2.9b2\nprerelease=true\n")
+            output = _run(["test-build", "0.2.9", str(tags), "57"])
+        self.assertEqual(output, "version=0.2.9b57\ntag=v0.2.9b57\nprerelease=true\n")
 
     def test_a_test_build_without_a_draft_takes_the_next_patch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             tags = Path(directory) / "tags"
             tags.write_text("v0.2.8\nv0.2.9b1\nv0.3.0b1\n", encoding="utf-8")
-            output = _run(["test-build", "", str(tags)])
+            output = _run(["test-build", "", str(tags), "1"])
         self.assertEqual(output, "version=0.2.9b2\ntag=v0.2.9b2\nprerelease=true\n")
 
 
